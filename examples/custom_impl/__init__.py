@@ -1,0 +1,2 @@
+"""Custom plugin example package."""
+

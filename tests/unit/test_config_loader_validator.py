@@ -15,6 +15,7 @@ def _base_config() -> dict:
                 "name": "demo-agent",
                 "memory": {"type": "window_buffer", "on_error": "continue"},
                 "pattern": {"type": "react"},
+                "llm": {"provider": "mock"},
                 "tools": [
                     {"id": "search", "type": "builtin_search", "enabled": True},
                     {

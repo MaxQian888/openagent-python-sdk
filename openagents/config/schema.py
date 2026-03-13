@@ -39,6 +39,13 @@ class PluginRef:
             config=_to_dict(data.get("config"), f"{field_name}.config"),
         )
 
+    def validate(self, field_name: str) -> None:
+        """Validate that type or impl is specified."""
+        if not self.type and not self.impl:
+            raise ValueError(f"'{field_name}' must specify either 'type' or 'impl'")
+        if self.type and self.impl:
+            raise ValueError(f"'{field_name}' must specify only one of 'type' or 'impl', not both")
+
 
 @dataclass
 class MemoryRef(PluginRef):
@@ -89,6 +96,63 @@ class ToolRef(PluginRef):
             impl=base.impl,
             config=base.config,
         )
+
+
+@dataclass
+class RuntimeRef(PluginRef):
+    """Runtime plugin reference at global level."""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "RuntimeRef | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("'runtime' must be an object")
+        ref = cls(
+            type=_to_str_or_none(data.get("type"), "runtime.type"),
+            impl=_to_str_or_none(data.get("impl"), "runtime.impl"),
+            config=_to_dict(data.get("config"), "runtime.config"),
+        )
+        ref.validate("runtime")
+        return ref
+
+
+@dataclass
+class SessionRef(PluginRef):
+    """Session manager plugin reference at global level."""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "SessionRef | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("'session' must be an object")
+        ref = cls(
+            type=_to_str_or_none(data.get("type"), "session.type"),
+            impl=_to_str_or_none(data.get("impl"), "session.impl"),
+            config=_to_dict(data.get("config"), "session.config"),
+        )
+        ref.validate("session")
+        return ref
+
+
+@dataclass
+class EventBusRef(PluginRef):
+    """Event bus plugin reference at global level."""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "EventBusRef | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("'events' must be an object")
+        ref = cls(
+            type=_to_str_or_none(data.get("type"), "events.type"),
+            impl=_to_str_or_none(data.get("impl"), "events.impl"),
+            config=_to_dict(data.get("config"), "events.config"),
+        )
+        ref.validate("events")
+        return ref
 
 
 @dataclass
@@ -220,6 +284,9 @@ class AgentDefinition:
 class AppConfig:
     version: str = "1.0"
     agents: list[AgentDefinition] = field(default_factory=list)
+    runtime: RuntimeRef = field(default_factory=lambda: RuntimeRef(type="default"))
+    session: SessionRef = field(default_factory=lambda: SessionRef(type="in_memory"))
+    events: EventBusRef = field(default_factory=lambda: EventBusRef(type="async"))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AppConfig":
@@ -234,4 +301,10 @@ class AppConfig:
             raise ValueError("'agents' must be an array")
 
         agents = [AgentDefinition.from_dict(item, idx) for idx, item in enumerate(agents_raw)]
-        return cls(version=version.strip(), agents=agents)
+        return cls(
+            version=version.strip(),
+            agents=agents,
+            runtime=RuntimeRef.from_dict(data.get("runtime")) or RuntimeRef(type="default"),
+            session=SessionRef.from_dict(data.get("session")) or SessionRef(type="in_memory"),
+            events=EventBusRef.from_dict(data.get("events")) or EventBusRef(type="async"),
+        )

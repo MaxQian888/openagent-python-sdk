@@ -20,7 +20,7 @@ async def test_quickstart_builtin_echo_flow():
     assert "history=0" in result
     assert any(evt.name == "llm.called" for evt in runtime.event_bus.history)
 
-    state = runtime.session_manager.get_state("demo")
+    state = await runtime.session_manager.get_state("demo")
     assert isinstance(state.get("memory_buffer"), list)
     assert len(state["memory_buffer"]) == 1
     assert state["memory_buffer"][0]["input"] == "hello"
@@ -42,7 +42,7 @@ async def test_builtin_react_tool_call_flow():
     assert any(evt.name == "tool.succeeded" for evt in runtime.event_bus.history)
     assert any(evt.name == "llm.succeeded" for evt in runtime.event_bus.history)
 
-    state = runtime.session_manager.get_state("tool-sess")
+    state = await runtime.session_manager.get_state("tool-sess")
     assert len(state["memory_buffer"]) == 1
     assert state["memory_buffer"][0]["tool_results"]
 
@@ -58,6 +58,7 @@ async def test_window_buffer_trims_by_window_size():
                     "name": "window-agent",
                     "memory": {"type": "window_buffer", "config": {"window_size": 2}},
                     "pattern": {"type": "react"},
+                    "llm": {"provider": "mock"},
                     "tools": [],
                     "runtime": {"max_steps": 8, "step_timeout_ms": 1000},
                 }
@@ -74,6 +75,6 @@ async def test_window_buffer_trims_by_window_size():
     assert "history=1" in result2
     assert "history=2" in result3
 
-    state = runtime.session_manager.get_state("w")
+    state = await runtime.session_manager.get_state("w")
     assert len(state["memory_buffer"]) == 2
     assert [row["input"] for row in state["memory_buffer"]] == ["second", "third"]

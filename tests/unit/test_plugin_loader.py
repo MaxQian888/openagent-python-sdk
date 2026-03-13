@@ -14,6 +14,7 @@ def _base_payload() -> dict:
                 "name": "demo-agent",
                 "memory": {"type": "window_buffer"},
                 "pattern": {"type": "react"},
+                "llm": {"provider": "mock"},
                 "tools": [{"id": "search", "type": "builtin_search"}],
             }
         ],

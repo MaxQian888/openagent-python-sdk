@@ -16,6 +16,7 @@ def _payload(memory_impl: str, pattern_impl: str, *, on_error: str = "continue")
                 "name": "runtime-test-agent",
                 "memory": {"impl": memory_impl, "on_error": on_error},
                 "pattern": {"impl": pattern_impl},
+                "llm": {"provider": "mock"},
                 "tools": [],
                 "runtime": {
                     "max_steps": 8,
@@ -45,7 +46,7 @@ async def test_runtime_inject_react_writeback_flow():
     )
 
     assert result == "injected=True"
-    session_state = runtime.session_manager.get_state("s1")
+    session_state = await runtime.session_manager.get_state("s1")
     assert session_state.get("memory_written") is True
 
 

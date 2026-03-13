@@ -22,6 +22,7 @@ def _payload(*, delay: float, max_items: int = 1000) -> dict:
                     "impl": "tests.fixtures.runtime_plugins.SlowFinalPattern",
                     "config": {"delay": delay},
                 },
+                "llm": {"provider": "mock"},
                 "tools": [],
                 "runtime": {
                     "max_steps": 6,
@@ -53,7 +54,7 @@ async def test_same_session_pressure_no_loss_and_serial_timing():
     # Same session must serialize.
     assert elapsed >= task_count * delay * 0.75
 
-    state = runtime.session_manager.get_state("shared")
+    state = await runtime.session_manager.get_state("shared")
     rows = state.get("memory_buffer", [])
     assert len(rows) == task_count
     assert Counter(row["input"] for row in rows) == Counter(inputs)

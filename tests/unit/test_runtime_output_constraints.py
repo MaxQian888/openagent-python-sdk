@@ -23,6 +23,7 @@ def _payload(
                 "name": "constraint-agent",
                 "memory": {"impl": "tests.fixtures.runtime_plugins.InjectWritebackMemory"},
                 "pattern": {"impl": pattern_impl, "config": pattern_config or {}},
+                "llm": {"provider": "mock"},
                 "tools": tools,
                 "runtime": {
                     "max_steps": max_steps,
@@ -92,7 +93,7 @@ async def test_step_timeout_is_enforced():
         load_config_dict(
             _payload(
                 pattern_impl="tests.fixtures.runtime_plugins.SlowContinuePattern",
-                pattern_config={"delay": 0.05},
+                pattern_config={"delay": 0.05, "step_timeout_ms": 10},
                 step_timeout_ms=10,
             )
         )

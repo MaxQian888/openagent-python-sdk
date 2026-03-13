@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from openagents.interfaces.capabilities import MEMORY_INJECT, PATTERN_REACT, TOOL_INVOKE
+from openagents.interfaces.capabilities import MEMORY_INJECT, PATTERN_EXECUTE, PATTERN_REACT, TOOL_INVOKE
 
 
 class CustomMemory:
@@ -17,10 +17,14 @@ class CustomMemory:
 class CustomPattern:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
-        self.capabilities = {PATTERN_REACT}
+        self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
 
     async def react(self, context: Any) -> dict[str, Any]:
         return {"type": "final", "content": "ok"}
+
+    async def execute(self, context: Any) -> Any:
+        action = await self.react(context)
+        return action.get("content")
 
 
 class CustomTool:
@@ -39,5 +43,9 @@ class BadPatternNoCapability:
 
     async def react(self, context: Any) -> dict[str, Any]:
         return {"type": "final", "content": "bad"}
+
+    async def execute(self, context: Any) -> Any:
+        action = await self.react(context)
+        return action.get("content")
 
 

@@ -36,7 +36,9 @@ def _validate_runtime(runtime: RuntimeOptions, where: str) -> None:
 
 def _validate_llm(llm: LLMOptions | None, where: str) -> None:
     if llm is None:
-        return
+        raise ConfigError(
+            f"'choose the llm provider from {sorted(_LLM_PROVIDER_VALUES)}"
+        )
     if llm.provider not in _LLM_PROVIDER_VALUES:
         raise ConfigError(
             f"'{where}.provider' must be one of {sorted(_LLM_PROVIDER_VALUES)}"

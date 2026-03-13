@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .event_bus import EventBus
+if TYPE_CHECKING:
+    from openagents.interfaces.events import EventBusPlugin
 
 
 @dataclass
@@ -17,7 +18,7 @@ class ExecutionContext:
     tools: dict[str, Any]
     llm_client: Any | None
     llm_options: Any | None
-    event_bus: EventBus
+    event_bus: "EventBusPlugin"
     memory_view: dict[str, Any] = field(default_factory=dict)
     tool_results: list[dict[str, Any]] = field(default_factory=list)
     scratch: dict[str, Any] = field(default_factory=dict)

@@ -7,12 +7,14 @@ from typing import Iterable
 MEMORY_INJECT = "memory.inject"
 MEMORY_WRITEBACK = "memory.writeback"
 PATTERN_REACT = "pattern.react"
+PATTERN_EXECUTE = "pattern.execute"
 TOOL_INVOKE = "tool.invoke"
 
 KNOWN_CAPABILITIES = {
     MEMORY_INJECT,
     MEMORY_WRITEBACK,
     PATTERN_REACT,
+    PATTERN_EXECUTE,
     TOOL_INVOKE,
 }
 

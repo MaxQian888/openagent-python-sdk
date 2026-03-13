@@ -28,7 +28,7 @@ async def test_runtime_from_quickstart_config_file():
     assert first.startswith("Echo:")
     assert second.startswith("Tool[search] =>")
 
-    state = runtime.session_manager.get_state("quickstart")
+    state = await runtime.session_manager.get_state("quickstart")
     assert len(state.get("memory_buffer", [])) == 2
 
 
@@ -42,6 +42,7 @@ async def test_runtime_from_custom_impl_config_file(tmp_path):
                 "name": "custom-agent",
                 "memory": {"impl": "tests.fixtures.custom_plugins.CustomMemory"},
                 "pattern": {"impl": "tests.fixtures.custom_plugins.CustomPattern"},
+                "llm": {"provider": "mock"},
                 "tools": [
                     {"id": "custom_tool", "impl": "tests.fixtures.custom_plugins.CustomTool"}
                 ],

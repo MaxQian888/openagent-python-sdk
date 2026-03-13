@@ -7,15 +7,35 @@ from typing import Any
 from openagents.plugins.builtin.events.async_event_bus import AsyncEventBus
 from openagents.plugins.builtin.memory.buffer import BufferMemory
 from openagents.plugins.builtin.memory.window_buffer import WindowBufferMemory
+from openagents.plugins.builtin.pattern.plan_execute import PlanExecutePattern
 from openagents.plugins.builtin.pattern.react import ReActPattern
+from openagents.plugins.builtin.pattern.reflexion import ReflexionPattern
 from openagents.plugins.builtin.runtime.default_runtime import DefaultRuntime
 from openagents.plugins.builtin.session.in_memory import InMemorySessionManager
 from openagents.plugins.builtin.tool.common import BuiltinSearchTool
+from openagents.plugins.builtin.tool.datetime_tools import (
+    CurrentTimeTool,
+    DateDiffTool,
+    DateParseTool,
+)
 from openagents.plugins.builtin.tool.file_ops import (
     DeleteFileTool,
     ListFilesTool,
     ReadFileTool,
     WriteFileTool,
+)
+from openagents.plugins.builtin.tool.math_tools import CalcTool, MinMaxTool, PercentageTool
+from openagents.plugins.builtin.tool.network_tools import (
+    HostLookupTool,
+    QueryParamTool,
+    URLBuildTool,
+    URLParseTool,
+)
+from openagents.plugins.builtin.tool.random_tools import (
+    RandomChoiceTool,
+    RandomIntTool,
+    RandomStringTool,
+    UUIDTool,
 )
 from openagents.plugins.builtin.tool.http_ops import HttpRequestTool
 from openagents.plugins.builtin.tool.system_ops import (
@@ -37,6 +57,8 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     },
     "pattern": {
         "react": ReActPattern,
+        "plan_execute": PlanExecutePattern,
+        "reflexion": ReflexionPattern,
     },
     "runtime": {
         "default": DefaultRuntime,
@@ -65,6 +87,24 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
         "execute_command": ExecuteCommandTool,
         "get_env": GetEnvTool,
         "set_env": SetEnvTool,
+        # DateTime operations
+        "current_time": CurrentTimeTool,
+        "date_parse": DateParseTool,
+        "date_diff": DateDiffTool,
+        # Random operations
+        "random_int": RandomIntTool,
+        "random_choice": RandomChoiceTool,
+        "random_string": RandomStringTool,
+        "uuid": UUIDTool,
+        # Network operations
+        "url_parse": URLParseTool,
+        "url_build": URLBuildTool,
+        "query_param": QueryParamTool,
+        "host_lookup": HostLookupTool,
+        # Math operations
+        "calc": CalcTool,
+        "percentage": PercentageTool,
+        "min_max": MinMaxTool,
     },
 }
 

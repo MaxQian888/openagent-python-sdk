@@ -5,7 +5,9 @@
       "Bash(find:*)",
       "Bash(python run_demo.py:*)",
       "Bash(pip install:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "mcp__ace-tool__search_context",
+      "Bash(uv run:*)"
     ]
   }
 }

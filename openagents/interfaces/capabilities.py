@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Any, Iterable
 
 MEMORY_INJECT = "memory.inject"
 MEMORY_WRITEBACK = "memory.writeback"
 PATTERN_REACT = "pattern.react"
 PATTERN_EXECUTE = "pattern.execute"
 TOOL_INVOKE = "tool.invoke"
-SKILL_EXECUTE = "skill.execute"
-SKILL_GET_PROMPT = "skill.get_prompt"
-SKILL_GET_TOOLS = "skill.get_tools"
 
 KNOWN_CAPABILITIES = {
     MEMORY_INJECT,
@@ -19,9 +16,6 @@ KNOWN_CAPABILITIES = {
     PATTERN_REACT,
     PATTERN_EXECUTE,
     TOOL_INVOKE,
-    SKILL_EXECUTE,
-    SKILL_GET_PROMPT,
-    SKILL_GET_TOOLS,
 }
 
 
@@ -36,4 +30,18 @@ def normalize_capabilities(values: Iterable[str] | None) -> set[str]:
         if item:
             normalized.add(item)
     return normalized
+
+
+def supports(plugin: Any, capability: str) -> bool:
+    """Check if a plugin supports a specific capability.
+
+    Args:
+        plugin: Plugin instance to check
+        capability: Capability string to look for
+
+    Returns:
+        True if plugin has the capability
+    """
+    capabilities = normalize_capabilities(getattr(plugin, "capabilities", set()))
+    return capability in capabilities
 

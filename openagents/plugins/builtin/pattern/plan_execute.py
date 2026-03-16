@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
+import json
 from typing import Any
 
 from openagents.interfaces.capabilities import PATTERN_EXECUTE, PATTERN_REACT
@@ -19,6 +19,58 @@ class PlanExecutePattern(PatternPlugin):
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={PATTERN_EXECUTE, PATTERN_REACT})
 
+    # Default implementations
+
+    async def emit(self, event_name: str, **payload: Any) -> None:
+        """Emit event using context's event_bus."""
+        ctx = self.context
+        await ctx.event_bus.emit(
+            event_name,
+            agent_id=ctx.agent_id,
+            session_id=ctx.session_id,
+            **payload,
+        )
+
+    async def call_tool(self, tool_id: str, params: dict[str, Any] | None = None) -> Any:
+        """Call a tool and record result."""
+        ctx = self.context
+        if tool_id not in ctx.tools:
+            raise KeyError(f"Tool '{tool_id}' is not registered")
+        tool = ctx.tools[tool_id]
+        await self.emit("tool.called", tool_id=tool_id, params=params or {})
+        try:
+            result = await tool.invoke(params or {}, ctx)
+            ctx.tool_results.append({"tool_id": tool_id, "result": result})
+            await self.emit("tool.succeeded", tool_id=tool_id, result=result)
+            return result
+        except Exception as exc:
+            await self.emit("tool.failed", tool_id=tool_id, error=str(exc))
+            raise
+
+    async def call_llm(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Call the LLM."""
+        ctx = self.context
+        if ctx.llm_client is None:
+            raise RuntimeError("No LLM client configured for this agent")
+        await self.emit("llm.called", model=model)
+        result = await ctx.llm_client.complete(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        await self.emit("llm.succeeded", model=model)
+        return result
+
+    # Pattern-specific methods
+
     def _max_steps(self) -> int:
         max_steps = self.config.get("max_steps", 16)
         if isinstance(max_steps, int) and max_steps > 0:
@@ -31,8 +83,9 @@ class PlanExecutePattern(PatternPlugin):
             return timeout
         return 30000
 
-    def _llm_enabled(self, context: Any) -> bool:
-        return getattr(context, "llm_client", None) is not None
+    def _llm_enabled(self) -> bool:
+        ctx = self.context
+        return ctx.llm_client is not None
 
     def _format_history(self, history: list) -> str:
         """Format history for LLM prompt."""
@@ -50,8 +103,9 @@ class PlanExecutePattern(PatternPlugin):
                     lines.append(f"Assistant: {assistant_msg}")
         return "\n".join(lines) if lines else "(no conversation history)"
 
-    def _planning_prompt(self, context: Any) -> str:
-        history = context.memory_view.get("history", [])
+    def _planning_prompt(self) -> str:
+        ctx = self.context
+        history = ctx.memory_view.get("history", [])
         history_text = self._format_history(history)
 
         return (
@@ -59,27 +113,27 @@ class PlanExecutePattern(PatternPlugin):
             "Given the user input and conversation history, create a detailed step-by-step plan.\n"
             f"CONVERSATION_HISTORY:\n{history_text}\n"
             "Return only JSON with this structure:\n"
-            "{\"plan\": [{\"step\": 1, \"action\": \"tool_call\", \"tool\": \"tool_id\", \"params\": {...}}, {\"step\": 2, \"action\": \"final\", \"content\": \"...\"}]}\n"
+            '{"plan": [{"step": 1, "action": "tool_call", "tool": "tool_id", "params": {...}}, {"step": 2, "action": "final", "content": "..."}]}\n'
             "No markdown, no extra text."
         )
 
-    def _execution_prompt(self, context: Any, step_num: int, plan: list) -> str:
-        tool_ids = sorted(context.tools.keys())
-        history = context.memory_view.get("history", [])
+    def _execution_prompt(self, step_num: int, plan: list) -> str:
+        ctx = self.context
+        tool_ids = sorted(ctx.tools.keys())
+        history = ctx.memory_view.get("history", [])
         history_text = self._format_history(history)
 
         return (
             f"Execute step {step_num} of the plan.\n"
-            f"Current input: {context.input_text}\n"
+            f"Current input: {ctx.input_text}\n"
             f"CONVERSATION_HISTORY:\n{history_text}\n"
             f"Available tools: {', '.join(tool_ids)}\n"
             f"Return JSON:\n"
-            "{\"type\":\"tool_call\",\"tool\":\"id\",\"params\":{...}} or {\"type\":\"final\",\"content\":\"...\"}\n"
+            '{"type":"tool_call","tool":"id","params":{...}} or {"type":"final","content":"..."}\n'
             "No markdown."
         )
 
     def _parse_llm_response(self, raw: str) -> dict[str, Any]:
-        import json
         try:
             data = json.loads(raw.strip())
             if isinstance(data, dict):
@@ -96,13 +150,14 @@ class PlanExecutePattern(PatternPlugin):
                 pass
         return {"type": "final", "content": raw}
 
-    async def _plan(self, context: Any) -> list[dict[str, Any]]:
+    async def _plan(self) -> list[dict[str, Any]]:
         """Phase 1: Create a plan."""
+        ctx = self.context
         messages = [
-            {"role": "system", "content": self._planning_prompt(context)},
-            {"role": "user", "content": context.input_text},
+            {"role": "system", "content": self._planning_prompt()},
+            {"role": "user", "content": ctx.input_text},
         ]
-        raw = await context.call_llm(messages=messages)
+        raw = await self.call_llm(messages=messages)
         result = self._parse_llm_response(raw)
 
         plan = result.get("plan", [])
@@ -110,15 +165,15 @@ class PlanExecutePattern(PatternPlugin):
             plan = [{"type": "final", "content": str(plan)}]
         return plan
 
-    async def _execute_plan(self, context: Any, plan: list[dict[str, Any]]) -> str:
+    async def _execute_plan(self, plan: list[dict[str, Any]]) -> str:
         """Phase 2: Execute the plan step by step."""
+        ctx = self.context
         max_steps = self._max_steps()
-        timeout_s = self._step_timeout_ms() / 1000
         results = []
 
         for i, step in enumerate(plan[:max_steps]):
             step_num = i + 1
-            await context.emit("pattern.step_started", step=step_num, plan_step=step)
+            await self.emit("pattern.step_started", step=step_num, plan_step=step)
 
             action_type = step.get("action") or step.get("type")
 
@@ -126,7 +181,7 @@ class PlanExecutePattern(PatternPlugin):
                 tool_id = step.get("tool")
                 params = step.get("params", {})
                 try:
-                    await context.call_tool(tool_id, params)
+                    await self.call_tool(tool_id, params)
                     results.append(f"Step {step_num}: {tool_id} completed")
                 except Exception as e:
                     results.append(f"Step {step_num}: {tool_id} failed - {e}")
@@ -140,26 +195,27 @@ class PlanExecutePattern(PatternPlugin):
 
         return "\n".join(results) if results else "Plan executed"
 
-    async def react(self, context: Any) -> dict[str, Any]:
+    async def react(self) -> dict[str, Any]:
         """Single step - not used in PlanExecute, use execute instead."""
         return {"type": "final", "content": "Use execute() for PlanExecute pattern"}
 
-    async def execute(self, context: Any) -> Any:
+    async def execute(self) -> Any:
         """Execute the complete Plan-Execute workflow."""
-        if not self._llm_enabled(context):
+        ctx = self.context
+        if not self._llm_enabled():
             return {"type": "final", "content": "PlanExecute requires LLM"}
 
-        await context.emit("pattern.phase", phase="planning")
+        await self.emit("pattern.phase", phase="planning")
 
         # Phase 1: Create plan
-        plan = await self._plan(context)
-        context.scratch["_plan"] = plan
+        plan = await self._plan()
+        ctx.scratch["_plan"] = plan
 
-        await context.emit("pattern.phase", phase="executing")
-        await context.emit("pattern.plan_created", plan=plan)
+        await self.emit("pattern.phase", phase="executing")
+        await self.emit("pattern.plan_created", plan=plan)
 
         # Phase 2: Execute plan
-        result = await self._execute_plan(context, plan)
+        result = await self._execute_plan(plan)
 
-        context.state["_runtime_last_output"] = result
+        ctx.state["_runtime_last_output"] = result
         return result

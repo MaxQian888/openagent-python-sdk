@@ -11,10 +11,64 @@ from openagents.interfaces.pattern import PatternPlugin
 
 
 class ReActPattern(PatternPlugin):
+    """ReAct pattern implementation."""
+
     _PENDING_TOOL_KEY = "_react_pending_tool"
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={PATTERN_EXECUTE, PATTERN_REACT})
+
+    # Default implementations - can be overridden
+
+    async def emit(self, event_name: str, **payload: Any) -> None:
+        """Emit event using context's event_bus."""
+        ctx = self.context
+        await ctx.event_bus.emit(
+            event_name,
+            agent_id=ctx.agent_id,
+            session_id=ctx.session_id,
+            **payload,
+        )
+
+    async def call_tool(self, tool_id: str, params: dict[str, Any] | None = None) -> Any:
+        """Call a tool and record result."""
+        ctx = self.context
+        if tool_id not in ctx.tools:
+            raise KeyError(f"Tool '{tool_id}' is not registered")
+        tool = ctx.tools[tool_id]
+        await self.emit("tool.called", tool_id=tool_id, params=params or {})
+        try:
+            result = await tool.invoke(params or {}, ctx)
+            ctx.tool_results.append({"tool_id": tool_id, "result": result})
+            await self.emit("tool.succeeded", tool_id=tool_id, result=result)
+            return result
+        except Exception as exc:
+            await self.emit("tool.failed", tool_id=tool_id, error=str(exc))
+            raise
+
+    async def call_llm(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Call the LLM."""
+        ctx = self.context
+        if ctx.llm_client is None:
+            raise RuntimeError("No LLM client configured for this agent")
+        await self.emit("llm.called", model=model)
+        result = await ctx.llm_client.complete(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        await self.emit("llm.succeeded", model=model)
+        return result
+
+    # Pattern-specific methods
 
     def _tool_prefix(self) -> str:
         return str(self.config.get("tool_prefix", "/tool")).strip() or "/tool"
@@ -37,16 +91,17 @@ class ReActPattern(PatternPlugin):
     def _format_tool_result(self, tool_id: str, result: Any) -> str:
         return f"Tool[{tool_id}] => {result}"
 
-    def _llm_enabled(self, context: Any) -> bool:
-        return getattr(context, "llm_client", None) is not None
+    def _llm_enabled(self) -> bool:
+        ctx = self.context
+        return ctx.llm_client is not None
 
     def _llm_system_prompt(self) -> str:
         return (
             "You are a strict planner for an agent runtime.\n"
             "Return only JSON with one of these shapes:\n"
-            "{\"type\":\"final\",\"content\":\"...\"}\n"
-            "{\"type\":\"continue\"}\n"
-            "{\"type\":\"tool_call\",\"tool\":\"<tool_id>\",\"params\":{...}}\n"
+            '{"type":"final","content":"..."}\n'
+            '{"type":"continue"}\n'
+            '{"type":"tool_call","tool":"<tool_id>","params":{...}}\n'
             "No markdown, no extra text."
         )
 
@@ -56,7 +111,7 @@ class ReActPattern(PatternPlugin):
             return "(no conversation history)"
 
         lines = []
-        for i, item in enumerate(history):
+        for item in history:
             if isinstance(item, dict):
                 user_msg = item.get("input", "")
                 assistant_msg = item.get("output", "")
@@ -69,15 +124,16 @@ class ReActPattern(PatternPlugin):
 
         return "\n".join(lines) if lines else "(no conversation history)"
 
-    def _llm_user_prompt(self, context: Any) -> str:
-        history = context.memory_view.get("history")
+    def _llm_user_prompt(self) -> str:
+        ctx = self.context
+        history = ctx.memory_view.get("history")
         if not isinstance(history, list):
             history = []
 
         history_text = self._format_history(history)
-        tool_ids = sorted(context.tools.keys())
+        tool_ids = sorted(ctx.tools.keys())
         return (
-            f"INPUT:{context.input_text}\n"
+            f"INPUT:{ctx.input_text}\n"
             f"CONVERSATION_HISTORY:\n{history_text}\n"
             f"AVAILABLE_TOOLS:{','.join(tool_ids)}\n"
             "Prefer tool_call when user explicitly asks for tool usage.\n"
@@ -106,16 +162,17 @@ class ReActPattern(PatternPlugin):
 
         return {"type": "final", "content": raw}
 
-    async def _react_with_llm(self, context: Any) -> dict[str, Any]:
+    async def _react_with_llm(self) -> dict[str, Any]:
+        ctx = self.context
         messages = [
             {"role": "system", "content": self._llm_system_prompt()},
-            {"role": "user", "content": self._llm_user_prompt(context)},
+            {"role": "user", "content": self._llm_user_prompt()},
         ]
-        llm_options = getattr(context, "llm_options", None)
+        llm_options = ctx.llm_options
         model = getattr(llm_options, "model", None) if llm_options else None
         temperature = getattr(llm_options, "temperature", None) if llm_options else None
         max_tokens = getattr(llm_options, "max_tokens", None) if llm_options else None
-        raw = await context.call_llm(
+        raw = await self.call_llm(
             messages=messages,
             model=model,
             temperature=temperature,
@@ -125,20 +182,22 @@ class ReActPattern(PatternPlugin):
         if action.get("type") == "tool_call":
             tool_id = action.get("tool") or action.get("tool_id")
             if isinstance(tool_id, str) and tool_id.strip():
-                context.scratch[self._PENDING_TOOL_KEY] = tool_id.strip()
+                ctx.scratch[self._PENDING_TOOL_KEY] = tool_id.strip()
         return action
 
-    async def react(self, context: Any) -> dict[str, Any]:
-        pending_tool = context.scratch.get(self._PENDING_TOOL_KEY)
+    async def react(self) -> dict[str, Any]:
+        """Run one pattern step."""
+        ctx = self.context
+        pending_tool = ctx.scratch.get(self._PENDING_TOOL_KEY)
         if isinstance(pending_tool, str):
-            context.scratch.pop(self._PENDING_TOOL_KEY, None)
-            latest = context.tool_results[-1]["result"] if context.tool_results else None
+            ctx.scratch.pop(self._PENDING_TOOL_KEY, None)
+            latest = ctx.tool_results[-1]["result"] if ctx.tool_results else None
             return {"type": "final", "content": self._format_tool_result(pending_tool, latest)}
 
-        if self._llm_enabled(context):
-            return await self._react_with_llm(context)
+        if self._llm_enabled():
+            return await self._react_with_llm()
 
-        raw_input = (context.input_text or "").strip()
+        raw_input = (ctx.input_text or "").strip()
         prefix = self._tool_prefix()
         if raw_input.startswith(prefix):
             rest = raw_input[len(prefix) :].strip()
@@ -150,18 +209,17 @@ class ReActPattern(PatternPlugin):
             parts = rest.split(maxsplit=1)
             tool_id = parts[0].strip()
             query = parts[1].strip() if len(parts) == 2 else ""
-            context.scratch[self._PENDING_TOOL_KEY] = tool_id
+            ctx.scratch[self._PENDING_TOOL_KEY] = tool_id
             return {
                 "type": "tool_call",
                 "tool": tool_id,
                 "params": {"query": query},
             }
 
-        history = context.memory_view.get("history")
+        history = ctx.memory_view.get("history")
         if not isinstance(history, list):
             history = []
 
-        # For mock LLM: simple format with count
         history_count = len(history)
         history_lines = []
         for item in history:
@@ -179,23 +237,24 @@ class ReActPattern(PatternPlugin):
             "content": f"{self._echo_prefix()}: {raw_input}\n\n[Conversation History ({history_count} items)]:\n{history_text}",
         }
 
-    async def execute(self, context: Any) -> Any:
+    async def execute(self) -> Any:
         """Execute the complete ReAct loop."""
+        ctx = self.context
         allowed_action_types = {"tool_call", "final", "continue"}
         max_steps = self._max_steps()
         timeout_s = self._step_timeout_ms() / 1000
 
         for step in range(max_steps):
-            await context.emit("pattern.step_started", step=step)
+            await self.emit("pattern.step_started", step=step)
 
             try:
-                action = await asyncio.wait_for(self.react(context), timeout=timeout_s)
+                action = await asyncio.wait_for(self.react(), timeout=timeout_s)
             except asyncio.TimeoutError as exc:
                 raise TimeoutError(
                     f"Pattern step timed out after {self._step_timeout_ms()}ms at step {step}"
                 ) from exc
 
-            await context.emit("pattern.step_finished", step=step, action=action)
+            await self.emit("pattern.step_finished", step=step, action=action)
 
             if not isinstance(action, dict):
                 raise TypeError(f"Pattern action must be dict, got {type(action).__name__}")
@@ -218,16 +277,15 @@ class ReActPattern(PatternPlugin):
                     params = {}
                 if not isinstance(params, dict):
                     raise ValueError("tool_call action 'params' must be an object")
-                await context.call_tool(tool_id, params)
+                await self.call_tool(tool_id, params)
                 continue
 
             if action_type == "final":
                 content = action.get("content")
-                context.state["_runtime_last_output"] = content
+                ctx.state["_runtime_last_output"] = content
                 return content
 
             # action_type == "continue"
             continue
 
         raise RuntimeError(f"Pattern exceeded max_steps ({max_steps})")
-

@@ -4,38 +4,41 @@ from .capabilities import (
     MEMORY_INJECT,
     MEMORY_WRITEBACK,
     PATTERN_REACT,
-    SKILL_EXECUTE,
-    SKILL_GET_PROMPT,
-    SKILL_GET_TOOLS,
     TOOL_INVOKE,
 )
 from .events import EventBusPlugin, EVENT_EMIT, EVENT_HISTORY, EVENT_SUBSCRIBE, RuntimeEvent
 from .memory import MemoryPlugin
-from .pattern import PatternPlugin
+from .pattern import ExecutionContext, PatternPlugin
 from .plugin import BasePlugin
 from .runtime import RUNTIME_LIFECYCLE, RUNTIME_MANAGE, RUNTIME_RUN, RuntimePlugin
 from .session import SESSION_MANAGE, SESSION_STATE, SessionManagerPlugin
-from .skill import SKILL_EXECUTE, SKILL_GET_PROMPT, SKILL_GET_TOOLS, SkillPlugin
-from .tool import ToolPlugin
+from .tool import (
+    PermanentToolError,
+    RetryableToolError,
+    ToolError,
+    ToolPlugin,
+    ToolResult,
+)
 
 __all__ = [
     "BasePlugin",
+    "ExecutionContext",
     "MemoryPlugin",
     "PatternPlugin",
     "ToolPlugin",
+    "ToolError",
+    "RetryableToolError",
+    "PermanentToolError",
+    "ToolResult",
     "RuntimePlugin",
     "SessionManagerPlugin",
     "EventBusPlugin",
-    "SkillPlugin",
     "RuntimeEvent",
     # Capabilities
     "MEMORY_INJECT",
     "MEMORY_WRITEBACK",
     "PATTERN_REACT",
     "TOOL_INVOKE",
-    "SKILL_EXECUTE",
-    "SKILL_GET_PROMPT",
-    "SKILL_GET_TOOLS",
     "RUNTIME_RUN",
     "RUNTIME_MANAGE",
     "RUNTIME_LIFECYCLE",

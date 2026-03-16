@@ -4,18 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK
-from openagents.interfaces.runtime import RUNTIME_RUN, RuntimePlugin
-
-if TYPE_CHECKING:
-    from openagents.config.schema import AgentDefinition, AppConfig
-    from openagents.llm.registry import create_llm_client
-    from openagents.plugins.loader import load_agent_plugins
-
-from openagents.runtime.dispatcher import supports
-from openagents.plugins.builtin.events.async_event_bus import AsyncEventBus as EventBus
-from openagents.runtime.execution_context import ExecutionContext
-from openagents.runtime.lifecycle import (
+from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK, supports
+from openagents.interfaces.events import (
     CONTEXT_CREATED,
     MEMORY_INJECTED,
     MEMORY_INJECT_FAILED,
@@ -27,6 +17,8 @@ from openagents.runtime.lifecycle import (
     RUN_VALIDATED,
     SESSION_ACQUIRED,
 )
+from openagents.interfaces.pattern import ExecutionContext, PatternPlugin
+from openagents.interfaces.runtime import RUNTIME_RUN, RuntimePlugin
 
 
 class DefaultRuntime(RuntimePlugin):
@@ -101,7 +93,10 @@ class DefaultRuntime(RuntimePlugin):
                     session_id=session_id,
                 )
 
-                context = ExecutionContext(
+                session_state.pop("_runtime_last_output", None)
+
+                # Setup pattern with runtime data
+                await plugins.pattern.setup(
                     agent_id=agent_id,
                     session_id=session_id,
                     input_text=input_text,
@@ -111,16 +106,21 @@ class DefaultRuntime(RuntimePlugin):
                     llm_options=agent.llm,
                     event_bus=self._event_bus,
                 )
-                context.state.pop("_runtime_last_output", None)
+
                 await self._event_bus.emit(
                     CONTEXT_CREATED,
                     agent_id=agent_id,
                     session_id=session_id,
                 )
 
-                await self._run_memory_inject(agent=agent, memory=plugins.memory, context=context)
-                result = await plugins.pattern.execute(context)
-                await self._run_memory_writeback(agent=agent, memory=plugins.memory, context=context)
+                # Run memory inject - pattern.context is now available
+                await self._run_memory_inject(agent=agent, memory=plugins.memory, pattern=plugins.pattern)
+
+                # Execute pattern
+                result = await plugins.pattern.execute()
+
+                # Run memory writeback
+                await self._run_memory_writeback(agent=agent, memory=plugins.memory, pattern=plugins.pattern)
 
                 await self._event_bus.emit(
                     RUN_COMPLETED,
@@ -152,10 +152,11 @@ class DefaultRuntime(RuntimePlugin):
         *,
         agent: AgentDefinition,
         memory: Any,
-        context: ExecutionContext,
+        pattern: PatternPlugin,
     ) -> None:
         if not supports(memory, MEMORY_INJECT):
             return
+        context = pattern.context
         try:
             await memory.inject(context)
             await self._event_bus.emit(
@@ -178,10 +179,11 @@ class DefaultRuntime(RuntimePlugin):
         *,
         agent: AgentDefinition,
         memory: Any,
-        context: ExecutionContext,
+        pattern: PatternPlugin,
     ) -> None:
         if not supports(memory, MEMORY_WRITEBACK):
             return
+        context = pattern.context
         try:
             await memory.writeback(context)
             await self._event_bus.emit(

@@ -78,3 +78,15 @@ class EventBusPlugin(BasePlugin):
 EVENT_SUBSCRIBE = "event.subscribe"
 EVENT_EMIT = "event.emit"
 EVENT_HISTORY = "event.history"
+
+# Runtime lifecycle event names
+RUN_REQUESTED = "run.requested"
+RUN_VALIDATED = "run.validated"
+SESSION_ACQUIRED = "session.acquired"
+CONTEXT_CREATED = "context.created"
+MEMORY_INJECTED = "memory.injected"
+MEMORY_INJECT_FAILED = "memory.inject_failed"
+MEMORY_WRITEBACK_SUCCEEDED = "memory.writeback_succeeded"
+MEMORY_WRITEBACK_FAILED = "memory.writeback_failed"
+RUN_COMPLETED = "run.completed"
+RUN_FAILED = "run.failed"

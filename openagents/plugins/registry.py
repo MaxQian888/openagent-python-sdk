@@ -51,13 +51,6 @@ from openagents.plugins.builtin.tool.text_ops import (
     TextTransformTool,
 )
 from openagents.plugins.builtin.tool.mcp_tool import McpTool
-from openagents.plugins.builtin.skill.builtin_skills import (
-    AnalystSkill,
-    AssistantSkill,
-    CoderSkill,
-    ResearcherSkill,
-    WriterSkill,
-)
 
 _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     "memory": {
@@ -78,13 +71,6 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     },
     "events": {
         "async": AsyncEventBus,
-    },
-    "skill": {
-        "researcher": ResearcherSkill,
-        "coder": CoderSkill,
-        "writer": WriterSkill,
-        "analyst": AnalystSkill,
-        "assistant": AssistantSkill,
     },
     "tool": {
         "builtin_search": BuiltinSearchTool,

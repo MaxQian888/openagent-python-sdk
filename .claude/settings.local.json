@@ -10,7 +10,8 @@
       "Bash(uv run:*)",
       "mcp__tavily__tavily_crawl",
       "WebSearch",
-      "mcp__exa__web_search_exa"
+      "mcp__exa__web_search_exa",
+      "mcp__exa__get_code_context_exa"
     ]
   }
 }

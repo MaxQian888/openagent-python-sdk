@@ -2,17 +2,62 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
 from .plugin import BasePlugin
 
 
+# Tool Error Types
+class ToolError(Exception):
+    """Base exception for tool errors."""
+
+    tool_name: str = ""
+
+    def __init__(self, message: str, tool_name: str = ""):
+        super().__init__(message)
+        self.tool_name = tool_name
+
+
+class RetryableToolError(ToolError):
+    """Tool error that can be retried.
+
+    Examples: timeout, rate limit, temporary unavailability
+    """
+
+    pass
+
+
+class PermanentToolError(ToolError):
+    """Tool error that should not be retried.
+
+    Examples: invalid parameters, permission denied, resource not found
+    """
+
+    pass
+
+
+@dataclass
+class ToolResult:
+    """Standardized tool result."""
+
+    success: bool
+    data: Any = None
+    error: str | None = None
+    tool_name: str = ""
+
+
 class ToolPlugin(BasePlugin):
     """Base tool plugin."""
 
-    # Subclasses should override these
+    # Subclasses can override these
     name: str = ""
     description: str = ""
+
+    @property
+    def tool_name(self) -> str:
+        """Tool name, defaults to class name."""
+        return self.name or self.__class__.__name__
 
     async def invoke(self, params: dict[str, Any], context: Any) -> Any:
         """Execute tool call synchronously.

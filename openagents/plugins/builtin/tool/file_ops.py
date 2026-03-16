@@ -13,14 +13,36 @@ from openagents.interfaces.tool import ToolPlugin
 class ReadFileTool(ToolPlugin):
     """Read file content."""
 
+    name = "read_file"
+    description = "Read the content of a file from the filesystem"
+
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
 
-    async def invoke(self, params: dict[str, Any], context: Any) -> Any:
+    def schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file to read",
+                },
+            },
+            "required": ["path"],
+        }
+
+    def validate_params(self, params: dict[str, Any]) -> tuple[bool, str | None]:
         path = params.get("path", "")
         if not path:
-            raise ValueError("'path' parameter is required")
+            return False, "'path' parameter is required"
+        return True, None
 
+    async def invoke(self, params: dict[str, Any], context: Any) -> Any:
+        is_valid, error = self.validate_params(params)
+        if not is_valid:
+            raise ValueError(error)
+
+        path = params.get("path", "")
         try:
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()

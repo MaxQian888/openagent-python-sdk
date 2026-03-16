@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -86,3 +87,11 @@ class Runtime:
             await self._session.close()
         if hasattr(self._events, "close"):
             await self._events.close()
+
+    def run_sync(self, *, agent_id: str, session_id: str, input_text: str) -> Any:
+        """Synchronous wrapper for run().
+
+        Convenience method for non-async contexts.
+        Internally creates a new event loop.
+        """
+        return asyncio.run(self.run(agent_id=agent_id, session_id=session_id, input_text=input_text))

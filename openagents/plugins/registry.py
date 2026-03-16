@@ -6,6 +6,7 @@ from typing import Any
 
 from openagents.plugins.builtin.events.async_event_bus import AsyncEventBus
 from openagents.plugins.builtin.memory.buffer import BufferMemory
+from openagents.plugins.builtin.memory.mem0_memory import Mem0Memory
 from openagents.plugins.builtin.memory.window_buffer import WindowBufferMemory
 from openagents.plugins.builtin.pattern.plan_execute import PlanExecutePattern
 from openagents.plugins.builtin.pattern.react import ReActPattern
@@ -49,11 +50,20 @@ from openagents.plugins.builtin.tool.text_ops import (
     RipgrepTool,
     TextTransformTool,
 )
+from openagents.plugins.builtin.tool.mcp_tool import McpTool
+from openagents.plugins.builtin.skill.builtin_skills import (
+    AnalystSkill,
+    AssistantSkill,
+    CoderSkill,
+    ResearcherSkill,
+    WriterSkill,
+)
 
 _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     "memory": {
         "buffer": BufferMemory,
         "window_buffer": WindowBufferMemory,
+        "mem0": Mem0Memory,
     },
     "pattern": {
         "react": ReActPattern,
@@ -69,8 +79,16 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     "events": {
         "async": AsyncEventBus,
     },
+    "skill": {
+        "researcher": ResearcherSkill,
+        "coder": CoderSkill,
+        "writer": WriterSkill,
+        "analyst": AnalystSkill,
+        "assistant": AssistantSkill,
+    },
     "tool": {
         "builtin_search": BuiltinSearchTool,
+        "mcp": McpTool,
         # File operations
         "read_file": ReadFileTool,
         "write_file": WriteFileTool,

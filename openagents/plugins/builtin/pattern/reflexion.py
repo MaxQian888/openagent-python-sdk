@@ -35,21 +35,40 @@ class ReflexionPattern(PatternPlugin):
     def _llm_enabled(self, context: Any) -> bool:
         return getattr(context, "llm_client", None) is not None
 
+    def _format_history(self, history: list) -> str:
+        """Format history for LLM prompt."""
+        if not history:
+            return "(no conversation history)"
+
+        lines = []
+        for item in history[-5:]:  # Last 5 entries
+            if isinstance(item, dict):
+                user_msg = item.get("input", "")
+                assistant_msg = item.get("output", "")
+                if user_msg:
+                    lines.append(f"User: {user_msg}")
+                if assistant_msg:
+                    lines.append(f"Assistant: {assistant_msg}")
+        return "\n".join(lines) if lines else "(no conversation history)"
+
     def _reflection_prompt(self, context: Any) -> str:
         history = context.memory_view.get("history", [])
         tool_results = context.tool_results
 
-        history_text = ""
-        if history:
-            history_text = f"History: {history[-3:]}\n"
+        history_text = self._format_history(history)
 
         results_text = ""
         if tool_results:
-            results_text = f"Recent tool results: {tool_results[-2:]}\n"
+            results = []
+            for tr in tool_results[-2:]:
+                tool_id = tr.get("tool_id", "unknown")
+                result = tr.get("result", tr.get("error", "error"))
+                results.append(f"{tool_id}: {result}")
+            results_text = f"Recent tool results: {', '.join(results)}\n"
 
         return (
             f"You are reflecting on the agent's recent actions.\n"
-            f"{history_text}"
+            f"CONVERSATION_HISTORY:\n{history_text}\n"
             f"{results_text}"
             f"Current input: {context.input_text}\n"
             "Determine if the task is complete or needs retry.\n"
@@ -62,8 +81,12 @@ class ReflexionPattern(PatternPlugin):
 
     def _action_prompt(self, context: Any) -> str:
         tool_ids = sorted(context.tools.keys())
+        history = context.memory_view.get("history", [])
+        history_text = self._format_history(history)
+
         return (
             f"Input: {context.input_text}\n"
+            f"CONVERSATION_HISTORY:\n{history_text}\n"
             f"Available tools: {', '.join(tool_ids)}\n"
             "Return JSON:\n"
             "{\"type\":\"tool_call\",\"tool\":\"id\",\"params\":{...}}\n"

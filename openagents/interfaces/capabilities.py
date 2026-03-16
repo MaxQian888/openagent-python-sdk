@@ -9,6 +9,9 @@ MEMORY_WRITEBACK = "memory.writeback"
 PATTERN_REACT = "pattern.react"
 PATTERN_EXECUTE = "pattern.execute"
 TOOL_INVOKE = "tool.invoke"
+SKILL_EXECUTE = "skill.execute"
+SKILL_GET_PROMPT = "skill.get_prompt"
+SKILL_GET_TOOLS = "skill.get_tools"
 
 KNOWN_CAPABILITIES = {
     MEMORY_INJECT,
@@ -16,6 +19,9 @@ KNOWN_CAPABILITIES = {
     PATTERN_REACT,
     PATTERN_EXECUTE,
     TOOL_INVOKE,
+    SKILL_EXECUTE,
+    SKILL_GET_PROMPT,
+    SKILL_GET_TOOLS,
 }
 
 

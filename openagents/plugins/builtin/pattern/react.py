@@ -50,14 +50,36 @@ class ReActPattern(PatternPlugin):
             "No markdown, no extra text."
         )
 
+    def _format_history(self, history: list) -> str:
+        """Format history for LLM prompt."""
+        if not history:
+            return "(no conversation history)"
+
+        lines = []
+        for i, item in enumerate(history):
+            if isinstance(item, dict):
+                user_msg = item.get("input", "")
+                assistant_msg = item.get("output", "")
+                if user_msg:
+                    lines.append(f"User: {user_msg}")
+                if assistant_msg:
+                    lines.append(f"Assistant: {assistant_msg}")
+            elif isinstance(item, str):
+                lines.append(item)
+
+        return "\n".join(lines) if lines else "(no conversation history)"
+
     def _llm_user_prompt(self, context: Any) -> str:
         history = context.memory_view.get("history")
-        history_count = len(history) if isinstance(history, list) else 0
+        if not isinstance(history, list):
+            history = []
+
+        history_text = self._format_history(history)
         tool_ids = sorted(context.tools.keys())
         return (
             f"INPUT:{context.input_text}\n"
-            f"HISTORY_COUNT:{history_count}\n"
-            f"TOOLS:{','.join(tool_ids)}\n"
+            f"CONVERSATION_HISTORY:\n{history_text}\n"
+            f"AVAILABLE_TOOLS:{','.join(tool_ids)}\n"
             "Prefer tool_call when user explicitly asks for tool usage.\n"
             "If no tool is needed, return final."
         )
@@ -136,10 +158,25 @@ class ReActPattern(PatternPlugin):
             }
 
         history = context.memory_view.get("history")
-        history_count = len(history) if isinstance(history, list) else 0
+        if not isinstance(history, list):
+            history = []
+
+        # For mock LLM: simple format with count
+        history_count = len(history)
+        history_lines = []
+        for item in history:
+            if isinstance(item, dict):
+                user_msg = item.get("input", "")
+                assistant_msg = item.get("output", "")
+                if user_msg:
+                    history_lines.append(f"User: {user_msg}")
+                if assistant_msg:
+                    history_lines.append(f"Assistant: {assistant_msg}")
+        history_text = "\n".join(history_lines) if history_lines else "(no conversation history)"
+
         return {
             "type": "final",
-            "content": f"{self._echo_prefix()}: {raw_input} (history={history_count})",
+            "content": f"{self._echo_prefix()}: {raw_input}\n\n[Conversation History ({history_count} items)]:\n{history_text}",
         }
 
     async def execute(self, context: Any) -> Any:

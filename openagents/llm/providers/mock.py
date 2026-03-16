@@ -53,8 +53,22 @@ class MockLLMClient(LLMClient):
 
     def _parse_prompt(self, text: str) -> dict[str, Any]:
         values: dict[str, Any] = {}
+        in_history = False
+        history_lines = []
+
         for line in text.splitlines():
-            if line.startswith("INPUT:"):
+            if line.startswith("CONVERSATION_HISTORY:") or line.startswith("HISTORY:"):
+                in_history = True
+                continue
+            elif line.startswith("INPUT:") or line.startswith("AVAILABLE_TOOLS:"):
+                in_history = False
+
+            if in_history:
+                if line.strip() and not line.startswith(" "):
+                    # This is a new history entry marker
+                    pass
+                history_lines.append(line)
+            elif line.startswith("INPUT:"):
                 values["input"] = line[len("INPUT:") :].strip()
             elif line.startswith("HISTORY_COUNT:"):
                 raw = line[len("HISTORY_COUNT:") :].strip()
@@ -62,7 +76,10 @@ class MockLLMClient(LLMClient):
                     values["history_count"] = int(raw)
                 except ValueError:
                     values["history_count"] = 0
+
+        # Count history items by counting "User:" or "Assistant:" markers
+        history_count = sum(1 for line in history_lines if line.strip().startswith(("User:", "Assistant:")))
         values.setdefault("input", "")
-        values.setdefault("history_count", 0)
+        values.setdefault("history_count", history_count)
         return values
 

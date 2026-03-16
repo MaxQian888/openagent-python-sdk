@@ -34,10 +34,30 @@ class PlanExecutePattern(PatternPlugin):
     def _llm_enabled(self, context: Any) -> bool:
         return getattr(context, "llm_client", None) is not None
 
-    def _planning_prompt(self) -> str:
+    def _format_history(self, history: list) -> str:
+        """Format history for LLM prompt."""
+        if not history:
+            return "(no conversation history)"
+
+        lines = []
+        for item in history[-5:]:  # Last 5 entries
+            if isinstance(item, dict):
+                user_msg = item.get("input", "")
+                assistant_msg = item.get("output", "")
+                if user_msg:
+                    lines.append(f"User: {user_msg}")
+                if assistant_msg:
+                    lines.append(f"Assistant: {assistant_msg}")
+        return "\n".join(lines) if lines else "(no conversation history)"
+
+    def _planning_prompt(self, context: Any) -> str:
+        history = context.memory_view.get("history", [])
+        history_text = self._format_history(history)
+
         return (
             "You are a planner for an agent runtime.\n"
-            "Given the user input, create a detailed step-by-step plan.\n"
+            "Given the user input and conversation history, create a detailed step-by-step plan.\n"
+            f"CONVERSATION_HISTORY:\n{history_text}\n"
             "Return only JSON with this structure:\n"
             "{\"plan\": [{\"step\": 1, \"action\": \"tool_call\", \"tool\": \"tool_id\", \"params\": {...}}, {\"step\": 2, \"action\": \"final\", \"content\": \"...\"}]}\n"
             "No markdown, no extra text."
@@ -45,9 +65,13 @@ class PlanExecutePattern(PatternPlugin):
 
     def _execution_prompt(self, context: Any, step_num: int, plan: list) -> str:
         tool_ids = sorted(context.tools.keys())
+        history = context.memory_view.get("history", [])
+        history_text = self._format_history(history)
+
         return (
             f"Execute step {step_num} of the plan.\n"
             f"Current input: {context.input_text}\n"
+            f"CONVERSATION_HISTORY:\n{history_text}\n"
             f"Available tools: {', '.join(tool_ids)}\n"
             f"Return JSON:\n"
             "{\"type\":\"tool_call\",\"tool\":\"id\",\"params\":{...}} or {\"type\":\"final\",\"content\":\"...\"}\n"
@@ -75,7 +99,7 @@ class PlanExecutePattern(PatternPlugin):
     async def _plan(self, context: Any) -> list[dict[str, Any]]:
         """Phase 1: Create a plan."""
         messages = [
-            {"role": "system", "content": self._planning_prompt()},
+            {"role": "system", "content": self._planning_prompt(context)},
             {"role": "user", "content": context.input_text},
         ]
         raw = await context.call_llm(messages=messages)

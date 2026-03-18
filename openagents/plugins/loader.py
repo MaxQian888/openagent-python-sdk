@@ -75,14 +75,16 @@ def _instantiate(factory: Any, config: dict[str, Any]) -> Any:
 
 
 def _load_plugin(kind: str, ref: PluginRef) -> Any:
-    if ref.type:
-        plugin_cls = get_builtin_plugin_class(kind, ref.type)
-        if plugin_cls is None:
-            raise PluginLoadError(f"Unknown builtin {kind} plugin type: '{ref.type}'")
-        return _instantiate(plugin_cls, ref.config)
+    # impl takes priority if provided
     if ref.impl:
         symbol = _import_symbol(ref.impl)
         return _instantiate(symbol, ref.config)
+    # Fall back to type (builtin or decorator-registered)
+    if ref.type:
+        plugin_cls = get_builtin_plugin_class(kind, ref.type)
+        if plugin_cls is None:
+            raise PluginLoadError(f"Unknown {kind} plugin type: '{ref.type}'")
+        return _instantiate(plugin_cls, ref.config)
     raise PluginLoadError(f"{kind} plugin must set one of 'type' or 'impl'")
 
 

@@ -1,52 +1,165 @@
 # OpenAgents SDK
 
-Config-as-code Agent SDK with plugin-driven `memory`, `pattern`, and `tool`.
+<p align="center">
+  <img src="https://img.shields.io/pypi/v/openagents-sdk" alt="PyPI">
+  <img src="https://img.shields.io/pypi/pyversions/openagents-sdk" alt="Python">
+</p>
 
-## What It Provides
+<p align="center">
+  <strong>Agent is Loop. 配置驱动的 Agent 开发框架</strong>
+</p>
 
-- `agent.json` as the single source of agent configuration.
-- Pluggable `memory`, `pattern`, and `tool` via:
-  - `type` for builtin plugins
-  - `impl` for custom import path plugins
-- LLM-aware pattern execution via `llm` config (`mock` and `openai_compatible`).
-- Runtime as the only execution entrypoint.
-- Session isolation:
-  - same `session_id` runs serially
-  - different `session_id` runs concurrently
-- Memory strategy ownership:
-  - inject and writeback strategy are implemented by memory plugins
-  - runtime only triggers lifecycle timing
+---
 
-## Install And Dev
+## 什么是 Agent？
 
-- Sync deps: `uv sync --extra dev`
-- Run tests: `uv run --extra dev pytest -q`
+Agent 本质上是一个 **Loop**：
 
-## Quickstart
+```
+Input → LLM (思考) → Tool (行动) → Output → 循环
+```
 
-Use the provided config file:
+每一次循环，LLM 决定是继续行动还是返回结果。这个看似简单的模式，构成了 ChatGPT、Claude、Cursor 等一切 AI 应用的基石。
 
-- `examples/quickstart/agent.json`
-- Runnable script: `examples/quickstart/run_demo.py`
-- Command: `uv run python examples/quickstart/run_demo.py`
+**OpenAgents SDK** 让这个 Loop 变得可配置、可扩展、可观测。
 
-Run an agent:
+---
 
-```python
-import asyncio
+## 为什么选择 OpenAgents SDK？
 
-from openagents.runtime import Runtime
+### 1. 插件化的 Agent Loop
 
+传统 Agent 开发：写代码 → 改代码 → 调试
+OpenAgents SDK：写配置 → 加载 → 运行
 
-async def main() -> None:
-    runtime = Runtime.from_config("examples/quickstart/agent.json")
+```json
+{
+  "pattern": "react",      // 推理模式
+  "memory": "mem0",      // 记忆策略
+  "tools": ["search", "http"]  // 工具集
+}
+```
 
-    out1 = await runtime.run(
-        agent_id="assistant",
-        session_id="demo",
-        input_text="hello",
-    )
-    print(out1)
+每一个组件都是**可插拔**的：
+- 想换推理模式？改 `pattern` 字段
+- 想换记忆方式？改 `memory` 字段
+- 想加新工具？加到 `tools` 列表
+
+### 2. 生产级运行时
+
+Runtime 是 Agent 的"操作系统"，我们提供完整生产特性：
+
+| 特性 | 说明 |
+|------|------|
+| **Session 管理** | 并发控制、状态持久化、串行保障 |
+| **Event 总线** | 可观测性、调试钩子、审计日志 |
+| **Graceful Shutdown** | 优雅停机、确保任务完成 |
+| **错误恢复** | 重试、降级、异常捕获 |
+
+### 3. 灵活的扩展性
+
+```
+           ┌─────────────┐
+           │   Runtime   │  ← 运行时
+           └──────┬──────┘
+                  │
+    ┌────────────┼────────────┐
+    │            │            │
+┌───┴───┐  ┌────┴────┐  ┌──┴────┐
+│Memory │  │ Pattern │  │ Tools │
+└───────┘  └─────────┘  └───────┘
+```
+
+- **Memory** - 记忆层：窗口缓冲、向量检索、持久化存储
+- **Pattern** - 推理层：ReAct、Plan-Execute、Reflexion...
+- **Tools** - 能力层：14+ 内置工具、MCP 协议支持
+
+全部可自定义，全部可替换。
+
+---
+
+## 核心特性
+
+- **声明式配置** - 一份 JSON 定义 Agent 行为
+- **插件架构** - Tool、Pattern、Memory、Runtime 均可替换
+- **装饰器开发** - `@tool`、`@memory`、`@pattern` 快速定义插件
+- **多 LLM 支持** - OpenAI、Anthropic 兼容接口
+- **MCP 协议** - 无缝对接 Model Context Protocol
+- **可观测** - 完整 Event Bus 支持调试和审计
+
+---
+
+## 快速开始
+
+```bash
+uv add openagents-sdk
+```
+
+```bash
+# 运行示例
+uv run examples/quickstart/run_demo.py
+```
+
+详细文档：[开发指南](docs/developer-guide.md)
+
+---
+
+## 架构概览
+
+```
+┌─────────────────────────────────────────────┐
+│              agent.json                      │
+│  (声明式配置：Memory / Pattern / Tools)     │
+└─────────────────┬───────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────┐
+│                Runtime                       │
+│  ┌──────────────┬──────────────┐          │
+│  │   Session    │    Event     │          │
+│  │   Manager    │      Bus      │          │
+│  └──────────────┴──────────────┘          │
+└─────────────────┬───────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────┐
+│              Agent Loop                      │
+│                                          │
+│   ┌─────┐    ┌─────┐    ┌─────┐         │
+│   │ LLM │ ←→ │Tool │ ←→ │Memory│        │
+│   └─────┘    └─────┘    └─────┘         │
+│        ↑____________________↓              │
+│              (循环)                         │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## 文档
+
+| 文档 | 说明 |
+|------|------|
+| [开发指南](docs/developer-guide.md) | 完整开发指南 |
+| [API 参考](docs/api-reference.md) | API 文档 |
+| [插件开发](docs/plugin-development.md) | 自定义插件 |
+| [配置参考](docs/configuration.md) | 配置选项详解 |
+
+---
+
+## 开发
+
+```bash
+# 安装开发依赖
+uv sync --extra dev
+
+# 运行测试
+uv run --extra dev pytest -q
+```
+uv sync --extra dev
+
+# 运行测试
+uv run --extra dev pytest -q
+```
 
     out2 = await runtime.run(
         agent_id="assistant",

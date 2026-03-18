@@ -1,0 +1,58 @@
+{
+  "version": "1.0",
+  "runtime": {
+    "type": "default"
+  },
+  "session": {
+    "type": "in_memory"
+  },
+  "events": {
+    "type": "async"
+  },
+  "agents": [
+    {
+      "id": "qa_assistant",
+      "name": "Persistent QA Assistant",
+      "enabled": true,
+      "memory": {
+        "impl": "examples.persistent_qa.plugins.PersistentMemory",
+        "config": {
+          "storage_dir": ".agent_memory",
+          "max_items": 100
+        }
+      },
+      "pattern": {
+        "impl": "examples.persistent_qa.plugins.QAPatternWithFallback",
+        "config": {
+          "max_steps": 3,
+          "fallback_enabled": true
+        }
+      },
+      "llm": {
+        "provider": "openai_compatible",
+        "model": "LongCat-Flash-Chat",
+        "api_base": "https://api.longcat.chat/openai/v1",
+        "api_key_env": "LONGCAT_API_KEY",
+        "temperature": 0.7,
+        "max_tokens": 2048,
+        "timeout_ms": 60000
+      },
+      "tools": [
+        {
+          "id": "weather",
+          "impl": "examples.persistent_qa.plugins.WeatherTool",
+          "enabled": true,
+          "config": {
+            "use_cache": true
+          }
+        },
+        {
+          "id": "search",
+          "impl": "examples.persistent_qa.plugins.SearchTool",
+          "enabled": true,
+          "config": {}
+        }
+      ]
+    }
+  ]
+}

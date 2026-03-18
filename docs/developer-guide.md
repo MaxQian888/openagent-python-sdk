@@ -507,47 +507,51 @@ result = await context.call_tool("http_request", {
 
 ## 自定义插件
 
-### 1. 自定义 Tool
+推荐使用**装饰器**方式定义插件，无需继承任何类。
 
-创建自定义工具，只需继承 `ToolPlugin` 并实现 `invoke` 方法：
+### 1. 自定义 Tool (装饰器方式)
 
 ```python
-from openagents.interfaces.tool import ToolPlugin
-from openagents.interfaces.capabilities import TOOL_INVOKE
+from openagents import tool
 from typing import Any
 
-class WeatherTool(ToolPlugin):
+@tool(name="weather", description="查询天气")
+class WeatherTool:
     """天气查询工具"""
 
     def __init__(self, config=None):
-        super().__init__(
-            config=config or {},
-            capabilities={TOOL_INVOKE}
-        )
-        # 从配置获取 API Key
+        self.config = config or {}
+        self.capabilities = {"tool.invoke"}
         self.api_key = self.config.get("api_key")
 
     async def invoke(self, params: dict[str, Any], context: Any) -> Any:
-        """调用天气 API"""
         city = params.get("city")
         if not city:
             raise ValueError("'city' parameter is required")
 
         # 调用外部 API
-        import httpx
-        response = await httpx.get(
-            f"https://api.weather.com/v3/wx",
-            params={"city": city, "key": self.api_key}
-        )
-
         return {
             "city": city,
-            "temperature": response.json()["temp"],
-            "condition": response.json()["condition"]
+            "temperature": 25,
+            "condition": "sunny"
         }
+
+    # 可选：定义 schema
+    def schema(self):
+        return {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "城市名称"}
+            },
+            "required": ["city"]
+        }
+
+    # 可选：fallback
+    async def fallback(self, error, params, context):
+        return {"city": params.get("city"), "error": str(error)}
 ```
 
-**在配置中使用**
+**配置中使用**
 
 ```json
 {
@@ -561,137 +565,133 @@ class WeatherTool(ToolPlugin):
 }
 ```
 
-### 2. 自定义 Pattern
+### 2. 自定义 Tool (Protocol 方式)
 
-创建自定义推理模式：
+如果不想用装饰器，可以直接实现 Protocol：
 
 ```python
-from openagents.interfaces.pattern import PatternPlugin
-from openagents.interfaces.capabilities import PATTERN_EXECUTE, PATTERN_REACT
 from typing import Any
 
-class MyPattern(PatternPlugin):
+class WeatherTool:
+    """天气查询工具 - Protocol 实现"""
+
+    def __init__(self, config=None):
+        self.config = config or {}
+        self.capabilities = {"tool.invoke"}
+
+    async def invoke(self, params: dict[str, Any], context: Any) -> Any:
+        city = params.get("city")
+        return {"city": city, "temperature": 25}
+
+# Loader 会自动验证 config 和 capabilities 属性
+```
+
+### 3. 自定义 Pattern (装饰器方式)
+
+```python
+from openagents import pattern
+from typing import Any
+
+@pattern
+class MyPattern:
     """自定义推理模式"""
 
     def __init__(self, config=None):
-        super().__init__(
-            config=config or {},
-            capabilities={PATTERN_EXECUTE, PATTERN_REACT}
-        )
+        self.config = config or {}
+        self.capabilities = {"pattern.execute", "pattern.react"}
         self.max_steps = config.get("max_steps", 10) if config else 10
 
-    async def execute(self, context: Any) -> Any:
+    async def execute(self) -> Any:
         """主执行循环"""
         for step in range(self.max_steps):
-            action = await self.react(context)
-
-            if action["type"] == "tool_call":
-                tool_id = action.get("tool")
-                params = action.get("params", {})
-                await context.call_tool(tool_id, params)
-                continue
-
+            action = await self.react()
             if action["type"] == "final":
                 return action.get("content")
-
         return "Max steps reached"
 
-    async def react(self, context: Any) -> dict[str, Any]:
+    async def react(self) -> dict[str, Any]:
         """单步决策"""
-        # 获取历史
-        history = context.memory_view.get("history", [])
-
-        # 调用 LLM
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": context.input_text}
-        ]
-
-        try:
-            response = await context.call_llm(messages=messages)
-            # 解析响应，返回 action
-            return {"type": "final", "content": response}
-        except Exception:
-            return {"type": "final", "content": "Error occurred"}
+        # 使用 self.context 访问运行时数据
+        # 使用 await self.call_tool() 调用工具
+        # 使用 await self.call_llm() 调用 LLM
+        # 使用 await self.emit() 发送事件
+        return {"type": "final", "content": "Done"}
 ```
 
-### 3. 自定义 Memory
+### 4. 自定义 Memory (装饰器方式)
+
+Memory 接口现在有三个方法：
+- `inject(context)` - 注入记忆到执行上下文
+- `writeback(context)` - 保存当前交互
+- `retrieve(query, context)` - 检索相关记忆
 
 ```python
-from openagents.interfaces.memory import MemoryPlugin
-from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK
+from openagents import memory
 from typing import Any
 
-class MyMemory(MemoryPlugin):
-    """自定义记忆存储"""
+@memory
+class PersistentMemory:
+    """持久化记忆"""
 
     def __init__(self, config=None):
-        super().__init__(
-            config=config or {},
-            capabilities={MEMORY_INJECT, MEMORY_WRITEBACK}
-        )
+        self.config = config or {}
+        self.capabilities = {"memory.inject", "memory.writeback", "memory.retrieve"}
+        self.storage_path = config.get("storage_path", "./memory")
 
     async def inject(self, context: Any) -> None:
         """注入记忆到 context"""
-        # 方式 1: 设置 history
-        context.memory_view["history"] = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there!"}
-        ]
-
-        # 方式 2: 设置自定义字段
-        context.memory_view["user_info"] = {"name": "John"}
+        # 从存储加载历史
+        history = self._load_history(context.session_id)
+        context.memory_view["history"] = history
 
     async def writeback(self, context: Any) -> None:
-        """保存当前交互到记忆"""
-        # 可以访问 context.input_text, context.tool_results 等
-        memory_entry = {
+        """保存当前交互"""
+        record = {
             "input": context.input_text,
             "output": context.state.get("_runtime_last_output")
         }
-        # 保存到持久化存储...
-        pass
+        self._save_record(context.session_id, record)
+
+    async def retrieve(self, query: str, context: Any) -> list[dict]:
+        """检索相关记忆"""
+        # 实现语义搜索、关键词匹配等
+        history = context.memory_view.get("history", [])
+        results = []
+        for item in history:
+            if query.lower() in str(item.get("input", "")).lower():
+                results.append(item)
+        return results[:5]
 ```
 
-### 4. 自定义 Runtime
+### 5. 自定义 Runtime
 
 ```python
-from openagents.interfaces.runtime import RuntimePlugin
-from openagents.interfaces.capabilities import RUNTIME_RUN
-from typing import Any
+from openagents import runtime
 
-class MyRuntime(RuntimePlugin):
+@runtime
+class MyRuntime:
     """自定义运行时"""
 
-    def __init__(self, config=None, event_bus=None, session_manager=None):
-        super().__init__(
-            config=config or {},
-            capabilities={RUNTIME_RUN}
-        )
-        self._event_bus = event_bus
-        self._session_manager = session_manager
+    def __init__(self, config=None):
+        self.config = config or {}
+        self.capabilities = {"runtime.run"}
 
-    async def run(
-        self,
-        *,
-        agent_id: str,
-        session_id: str,
-        input_text: str,
-        app_config: Any,
-        agents_by_id: dict[str, Any]
-    ) -> Any:
+    async def run(self, *, agent_id, session_id, input_text, app_config, agents_by_id):
         """执行 Agent"""
         agent = agents_by_id[agent_id]
-
-        # 自定义逻辑
-        # 1. 加载插件
-        # 2. 注入记忆
-        # 3. 执行 Pattern
-        # 4. 保存记忆
-        # 5. 返回结果
-
+        # 自定义执行逻辑
         return "Custom result"
 ```
+
+### 6. 三种实现方式对比
+
+| 方式 | 优点 | 缺点 |
+|------|------|------|
+| **装饰器 (@tool)** | 最简单，自动注册 | 需要 import |
+| **Protocol** | 无需继承，自由灵活 | 需要手动定义 config/capabilities |
+| **继承 BasePlugin** | 有默认实现 | 紧耦合 |
+
+推荐使用**装饰器**方式，代码最简洁。
 
 ---
 
@@ -699,9 +699,43 @@ class MyRuntime(RuntimePlugin):
 
 ### Fallback 机制
 
-在 Pattern 中处理工具调用失败：
+在 Tool 中实现 fallback 方法：
 
 ```python
+from openagents import tool
+from openagents.interfaces.tool import RetryableToolError, PermanentToolError
+
+@tool
+class WeatherTool:
+    def __init__(self, config=None):
+        self.config = config or {}
+        self.capabilities = {"tool.invoke"}
+
+    async def invoke(self, params, context):
+        # 尝试调用真实 API
+        if random.random() < 0.1:  # 10% 失败率
+            raise RetryableToolError("API timeout")
+        return {"temp": 25}
+
+    async def fallback(self, error, params, context):
+        # 返回降级数据
+        return {"temp": 20, "from_cache": True, "error": str(error)}
+
+# Pattern 会自动调用 fallback
+```
+
+### 事件监听
+
+```python
+from openagents import Runtime
+
+runtime = Runtime.from_config("agent.json")
+
+async def on_tool_called(event):
+    print(f"Tool called: {event.payload}")
+
+runtime.event_bus.subscribe("tool.called", on_tool_called)
+```
 class MyPattern(PatternPlugin):
     async def execute(self, context: Any) -> Any:
         for step in range(self.max_steps):

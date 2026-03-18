@@ -2,6 +2,7 @@
 
 from .capabilities import (
     MEMORY_INJECT,
+    MEMORY_RETRIEVE,
     MEMORY_WRITEBACK,
     PATTERN_REACT,
     TOOL_INVOKE,
@@ -36,6 +37,7 @@ __all__ = [
     "RuntimeEvent",
     # Capabilities
     "MEMORY_INJECT",
+    "MEMORY_RETRIEVE",
     "MEMORY_WRITEBACK",
     "PATTERN_REACT",
     "TOOL_INVOKE",

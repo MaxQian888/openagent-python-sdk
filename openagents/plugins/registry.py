@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from openagents.decorators import (
+    _EVENT_REGISTRY,
+    _MEMORY_REGISTRY,
+    _PATTERN_REGISTRY,
+    _RUNTIME_REGISTRY,
+    _SESSION_REGISTRY,
+    _TOOL_REGISTRY,
+)
 from openagents.plugins.builtin.events.async_event_bus import AsyncEventBus
 from openagents.plugins.builtin.memory.buffer import BufferMemory
 from openagents.plugins.builtin.memory.mem0_memory import Mem0Memory
@@ -51,6 +59,16 @@ from openagents.plugins.builtin.tool.text_ops import (
     TextTransformTool,
 )
 from openagents.plugins.builtin.tool.mcp_tool import McpTool
+
+# Mapping from kind to decorator registry
+_DECORATOR_REGISTRY_MAP: dict[str, dict[str, type[Any]]] = {
+    "memory": _MEMORY_REGISTRY,
+    "pattern": _PATTERN_REGISTRY,
+    "runtime": _RUNTIME_REGISTRY,
+    "session": _SESSION_REGISTRY,
+    "events": _EVENT_REGISTRY,
+    "tool": _TOOL_REGISTRY,
+}
 
 _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     "memory": {
@@ -114,9 +132,26 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
 
 
 def get_builtin_plugin_class(kind: str, name: str) -> type[Any] | None:
-    return _BUILTIN_REGISTRY.get(kind, {}).get(name)
+    """Get a plugin class by kind and name.
+
+    Checks both builtin registry and decorator registry.
+    """
+    # First check builtin registry
+    builtin = _BUILTIN_REGISTRY.get(kind, {}).get(name)
+    if builtin is not None:
+        return builtin
+
+    # Then check decorator registry
+    decorator_reg = _DECORATOR_REGISTRY_MAP.get(kind, {})
+    return decorator_reg.get(name)
 
 
 def list_builtin_plugins(kind: str) -> list[str]:
-    return sorted(_BUILTIN_REGISTRY.get(kind, {}).keys())
+    """List all available plugins for a given kind.
+
+    Includes both builtin and decorator-registered plugins.
+    """
+    builtin_keys = set(_BUILTIN_REGISTRY.get(kind, {}).keys())
+    decorator_keys = set(_DECORATOR_REGISTRY_MAP.get(kind, {}).keys())
+    return sorted(builtin_keys | decorator_keys)
 

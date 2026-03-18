@@ -62,6 +62,38 @@ def test_load_agent_plugins_rejects_unknown_builtin_type():
     payload["agents"][0]["memory"] = {"type": "unknown_memory"}
     config = load_config_dict(payload)
 
-    with pytest.raises(PluginLoadError, match="Unknown builtin memory plugin type"):
+    with pytest.raises(PluginLoadError, match="Unknown memory plugin type"):
         load_agent_plugins(config.agents[0])
+
+
+def test_load_decorator_registered_plugins():
+    """Test that plugins registered via decorators can be loaded."""
+    # Import to trigger decorator registration
+    from tests.fixtures import decorator_plugins  # noqa: F401
+
+    payload = _base_payload()
+    payload["agents"][0]["memory"] = {"type": "DecoratorMemory"}
+    payload["agents"][0]["pattern"] = {"type": "DecoratorPattern"}
+    payload["agents"][0]["tools"] = [{"id": "my_tool", "type": "decorated_tool"}]
+
+    config = load_config_dict(payload)
+    plugins = load_agent_plugins(config.agents[0])
+
+    assert type(plugins.memory).__name__ == "DecoratorMemory"
+    assert type(plugins.pattern).__name__ == "DecoratorPattern"
+    assert "my_tool" in plugins.tools
+    assert type(plugins.tools["my_tool"]).__name__ == "DecoratorTool"
+
+
+def test_type_and_impl_both_provided_uses_impl():
+    """Test that when both type and impl are provided, impl takes priority."""
+    payload = _base_payload()
+    # Both type and impl - impl should win
+    payload["agents"][0]["pattern"] = {"type": "react", "impl": "tests.fixtures.custom_plugins.CustomPattern"}
+
+    config = load_config_dict(payload)
+    plugins = load_agent_plugins(config.agents[0])
+
+    # Should load CustomPattern, not ReActPattern
+    assert type(plugins.pattern).__name__ == "CustomPattern"
 

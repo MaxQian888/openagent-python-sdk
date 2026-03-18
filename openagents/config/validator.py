@@ -16,10 +16,9 @@ def _is_non_empty_str(value: str | None) -> bool:
 def _validate_plugin_selector(plugin: PluginRef, where: str) -> None:
     has_type = _is_non_empty_str(plugin.type)
     has_impl = _is_non_empty_str(plugin.impl)
-    if has_type and has_impl:
-        raise ConfigError(f"'{where}' must set exactly one of 'type' or 'impl', not both")
+    # Allow both type and impl (impl takes priority), but require at least one
     if not has_type and not has_impl:
-        raise ConfigError(f"'{where}' must set exactly one of 'type' or 'impl'")
+        raise ConfigError(f"'{where}' must set at least one of 'type' or 'impl'")
 
 
 def _validate_positive_int(value: int, where: str) -> None:

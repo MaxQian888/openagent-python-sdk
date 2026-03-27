@@ -183,7 +183,6 @@ Runtime.run()
 {
   "id": "assistant",
   "name": "My Agent",
-  "enabled": true,
   "memory": {
     "type": "window_buffer",
     "config": {"window_size": 20}
@@ -194,7 +193,7 @@ Runtime.run()
   },
   "llm": {
     "provider": "openai_compatible",
-    "model": "gpt-4",
+    "model": "gpt-4o-mini",
     "api_base": "https://api.openai.com/v1",
     "api_key_env": "OPENAI_API_KEY"
   },
@@ -213,11 +212,10 @@ Runtime.run()
 | 字段 | 必填 | 类型 | 说明 |
 |------|------|------|------|
 | `id` | ✅ | string | Agent 唯一标识 |
-| `name` | - | string | Agent 显示名称 |
-| `enabled` | - | boolean | 是否启用，默认 true |
+| `name` | ✅ | string | Agent 显示名称 |
 | `memory` | ✅ | object | 记忆配置 |
 | `pattern` | ✅ | object | 推理模式配置 |
-| `llm` | ✅ | object | LLM 配置 |
+| `llm` | - | object | LLM 配置 |
 | `tools` | - | array | 工具列表 |
 | `skill` | - | object | Skill 配置 |
 
@@ -231,13 +229,14 @@ Runtime.run()
 }
 ```
 
-**OpenAI**
+**OpenAI Compatible**
 
 ```json
 {
   "llm": {
-    "provider": "openai",
-    "model": "gpt-4",
+    "provider": "openai_compatible",
+    "model": "gpt-4o-mini",
+    "api_base": "https://api.openai.com/v1",
     "api_key_env": "OPENAI_API_KEY"
   }
 }
@@ -1119,7 +1118,8 @@ class CustomerSupportSkill(SkillPlugin):
 ```json
 {
   "llm": {
-    "provider": "openai",
+    "provider": "openai_compatible",
+    "api_base": "https://api.openai.com/v1",
     "api_key_env": "OPENAI_API_KEY"
   }
 }
@@ -1288,3 +1288,4 @@ result = run_agent_with_config(
 - GitHub: https://github.com/openagents/openagent-py-sdk
 - MCP 规范: https://modelcontextprotocol.io
 - Mem0: https://github.com/mem0ai/mem0
+

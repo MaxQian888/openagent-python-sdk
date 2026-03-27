@@ -86,7 +86,6 @@
 {
   "id": "assistant",
   "name": "My Agent",
-  "enabled": true,
   "memory": { ... },
   "pattern": { ... },
   "llm": { ... },
@@ -98,11 +97,10 @@
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `id` | string | 是 | Agent 唯一标识 |
-| `name` | string | 否 | Agent 显示名称 |
-| `enabled` | boolean | 否 | 是否启用，默认 true |
+| `name` | string | 是 | Agent 显示名称 |
 | `memory` | object | 是 | 记忆配置 |
 | `pattern` | object | 是 | 推理模式配置 |
-| `llm` | object | 是 | LLM 配置 |
+| `llm` | object | 否 | LLM 配置 |
 | `tools` | array | 否 | 工具列表 |
 | `runtime` | object | 否 | 运行时覆盖配置 |
 
@@ -320,7 +318,6 @@
     {
       "id": "assistant",
       "name": "My Agent",
-      "enabled": true,
       "memory": {
         "type": "window_buffer",
         "config": {
@@ -353,3 +350,4 @@
   ]
 }
 ```
+

@@ -6,7 +6,7 @@ from .schema import AppConfig, LLMOptions, PluginRef, RuntimeOptions
 from ..errors.exceptions import ConfigError
 
 _MEMORY_ON_ERROR_VALUES = {"continue", "fail"}
-_LLM_PROVIDER_VALUES = {"mock", "openai_compatible"}
+_LLM_PROVIDER_VALUES = {"anthropic", "mock", "openai_compatible"}
 
 
 def _is_non_empty_str(value: str | None) -> bool:
@@ -35,9 +35,7 @@ def _validate_runtime(runtime: RuntimeOptions, where: str) -> None:
 
 def _validate_llm(llm: LLMOptions | None, where: str) -> None:
     if llm is None:
-        raise ConfigError(
-            f"'choose the llm provider from {sorted(_LLM_PROVIDER_VALUES)}"
-        )
+        return
     if llm.provider not in _LLM_PROVIDER_VALUES:
         raise ConfigError(
             f"'{where}.provider' must be one of {sorted(_LLM_PROVIDER_VALUES)}"

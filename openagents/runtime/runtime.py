@@ -21,19 +21,16 @@ class Runtime:
     def __init__(
         self,
         config: AppConfig,
-        _skip_plugin_load: bool = False,  # Internal: skip for backward compat
-        _config_path: Path | None = None,  # Store config path for hot reload
+        _skip_plugin_load: bool = False,
+        _config_path: Path | None = None,
     ):
         self._config = config
         self._config_path = _config_path
         self._agents_by_id: dict[str, AgentDefinition] = {a.id: a for a in config.agents}
-        # Per-session agent plugins: {session_id: {agent_id: plugins}}
         self._session_plugins: dict[str, dict[str, Any]] = {}
-        # Config version for atomic swap
         self._config_version: int = 0
 
         if _skip_plugin_load:
-            # Backward compatibility mode - use builtins directly
             from openagents.plugins.builtin.events.async_event_bus import AsyncEventBus
             from openagents.plugins.builtin.runtime.default_runtime import DefaultRuntime
             from openagents.plugins.builtin.session.in_memory import InMemorySessionManager
@@ -41,11 +38,9 @@ class Runtime:
             self._events = AsyncEventBus()
             self._session = InMemorySessionManager()
             self._runtime = DefaultRuntime(config={})
-            # Inject dependencies via attributes (like load_runtime_components does)
             self._runtime._event_bus = self._events
             self._runtime._session_manager = self._session
         else:
-            # Load plugins from config
             components = load_runtime_components(
                 runtime_ref=config.runtime,
                 session_ref=config.session,
@@ -71,6 +66,17 @@ class Runtime:
         config = load_config(path)
         return cls(config, _config_path=path)
 
+    def _invalidate_runtime_agent_cache(self, agent_ids: set[str] | None = None) -> None:
+        """Invalidate runtime-level per-agent caches when config changes."""
+        invalidate = getattr(self._runtime, "invalidate_llm_client", None)
+        if not callable(invalidate):
+            return
+        if agent_ids is None:
+            invalidate()
+            return
+        for agent_id in agent_ids:
+            invalidate(agent_id)
+
     def _get_plugins_for_session(self, session_id: str, agent_id: str) -> Any:
         """Get or create plugins for a specific session.
 
@@ -94,10 +100,8 @@ class Runtime:
         if agent is None:
             raise ConfigError(f"Unknown agent id: '{agent_id}'")
 
-        # Get session-specific plugins (isolated for hot reload)
         plugins = self._get_plugins_for_session(session_id, agent_id)
 
-        # Delegate to the runtime plugin
         return await self._runtime.run(
             agent_id=agent_id,
             session_id=session_id,
@@ -108,28 +112,50 @@ class Runtime:
         )
 
     async def reload(self) -> None:
-        """Atomic hot reload - reload config, swap version, keep sessions running.
+        """Reload agent config from disk for future sessions.
 
-        New sessions will use the new config.
-        Running sessions keep their existing plugins until they complete.
+        Existing session plugin instances remain untouched. Top-level runtime,
+        session, and event bus components are not hot-swapped.
         """
         if self._config_path is None:
             raise ConfigError("Cannot reload: no config path available")
 
-        # Reload config from file
         new_config = load_config(self._config_path)
+        if (
+            new_config.runtime != self._config.runtime
+            or new_config.session != self._config.session
+            or new_config.events != self._config.events
+        ):
+            raise ConfigError(
+                "Hot reload does not support changing top-level runtime/session/events."
+            )
+
         old_version = self._config_version
+        old_agents = {agent.id: agent for agent in self._config.agents}
+        new_agents = {agent.id: agent for agent in new_config.agents}
+        changed_agent_ids = {
+            agent_id
+            for agent_id in old_agents.keys() | new_agents.keys()
+            if old_agents.get(agent_id) != new_agents.get(agent_id)
+        }
+        removed_agent_ids = set(old_agents) - set(new_agents)
+
         self._config_version += 1
-
-        # Update config and agent registry
         self._config = new_config
-        self._agents_by_id = {a.id: a for a in new_config.agents}
+        self._agents_by_id = new_agents
+        self._invalidate_runtime_agent_cache(changed_agent_ids)
 
-        # Emit reload event
+        for session_plugins in self._session_plugins.values():
+            for agent_id in removed_agent_ids:
+                plugins = session_plugins.pop(agent_id, None)
+                if plugins is not None and hasattr(plugins.memory, "close"):
+                    await plugins.memory.close()
+
         await self._events.emit(
             "config.reloaded",
             old_version=old_version,
             new_version=self._config_version,
+            changed_agents=sorted(changed_agent_ids),
         )
 
     async def reload_agent(self, agent_id: str) -> None:
@@ -140,14 +166,14 @@ class Runtime:
         if agent_id not in self._agents_by_id:
             raise ConfigError(f"Unknown agent id: '{agent_id}'")
 
-        # Clear cached plugins for all sessions (new sessions will get fresh ones)
         for session_plugins in self._session_plugins.values():
             if agent_id in session_plugins:
                 old_plugins = session_plugins[agent_id]
-                # Close old plugins if they have close method
                 if hasattr(old_plugins.memory, "close"):
                     await old_plugins.memory.close()
                 del session_plugins[agent_id]
+
+        self._invalidate_runtime_agent_cache({agent_id})
 
         await self._events.emit(
             "agent.reloaded",
@@ -174,7 +200,6 @@ class Runtime:
         if agent is None:
             return None
 
-        # Get plugins from any session (they should all be the same)
         plugins = None
         for session_plugins in self._session_plugins.values():
             if agent_id in session_plugins:
@@ -210,7 +235,6 @@ class Runtime:
 
     async def close(self) -> None:
         """Cleanup runtime resources."""
-        # Close all session plugins
         for session_plugins in self._session_plugins.values():
             for agent_id, plugins in session_plugins.items():
                 if hasattr(plugins.memory, "close"):

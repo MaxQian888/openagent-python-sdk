@@ -60,7 +60,6 @@ def test_load_config_accepts_type_and_impl(tmp_path):
     }
     config_path = _write(tmp_path, payload)
 
-    # Should not raise - both can be provided
     config = load_config(config_path)
     assert config.agents[0].memory.type == "window_buffer"
     assert config.agents[0].memory.impl == "my_plugins.memory.FileMemory"
@@ -98,6 +97,29 @@ def test_load_config_accepts_mock_llm(tmp_path):
     config = load_config(config_path)
     assert config.agents[0].llm is not None
     assert config.agents[0].llm.provider == "mock"
+
+
+def test_load_config_accepts_anthropic_llm(tmp_path):
+    payload = _base_config()
+    payload["agents"][0]["llm"] = {
+        "provider": "anthropic",
+        "model": "claude-3-haiku-20240307",
+        "api_key_env": "ANTHROPIC_API_KEY",
+    }
+    config_path = _write(tmp_path, payload)
+
+    config = load_config(config_path)
+    assert config.agents[0].llm is not None
+    assert config.agents[0].llm.provider == "anthropic"
+
+
+def test_load_config_accepts_missing_llm(tmp_path):
+    payload = _base_config()
+    payload["agents"][0].pop("llm")
+    config_path = _write(tmp_path, payload)
+
+    config = load_config(config_path)
+    assert config.agents[0].llm is None
 
 
 def test_load_config_rejects_unknown_llm_provider(tmp_path):

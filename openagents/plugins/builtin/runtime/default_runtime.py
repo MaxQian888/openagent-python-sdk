@@ -63,18 +63,15 @@ class DefaultRuntime(RuntimePlugin):
         input_text: str,
         app_config: "AppConfig",
         agents_by_id: dict[str, "AgentDefinition"],
-        agent_plugins: Any = None,  # Optional: pre-loaded plugins for hot reload
+        agent_plugins: Any = None,
     ) -> Any:
         """Execute an agent run."""
-        # Import here to avoid circular imports
-        from openagents.llm.registry import create_llm_client
         from openagents.plugins.loader import load_agent_plugins
 
         agent = agents_by_id.get(agent_id)
         if agent is None:
             raise ValueError(f"Unknown agent id: '{agent_id}'")
 
-        # Use pre-loaded plugins if provided (for hot reload support)
         if agent_plugins is None:
             plugins = load_agent_plugins(agent)
         else:
@@ -104,7 +101,6 @@ class DefaultRuntime(RuntimePlugin):
 
                 session_state.pop("_runtime_last_output", None)
 
-                # Setup pattern with runtime data
                 await plugins.pattern.setup(
                     agent_id=agent_id,
                     session_id=session_id,
@@ -122,13 +118,8 @@ class DefaultRuntime(RuntimePlugin):
                     session_id=session_id,
                 )
 
-                # Run memory inject - pattern.context is now available
                 await self._run_memory_inject(agent=agent, memory=plugins.memory, pattern=plugins.pattern)
-
-                # Execute pattern
                 result = await plugins.pattern.execute()
-
-                # Run memory writeback
                 await self._run_memory_writeback(agent=agent, memory=plugins.memory, pattern=plugins.pattern)
 
                 await self._event_bus.emit(
@@ -150,11 +141,18 @@ class DefaultRuntime(RuntimePlugin):
     def _get_llm_client(self, agent: "AgentDefinition") -> Any | None:
         if agent.id in self._llm_clients:
             return self._llm_clients[agent.id]
-        # Import here to avoid circular imports
         from openagents.llm.registry import create_llm_client
+
         client = create_llm_client(agent.llm)
         self._llm_clients[agent.id] = client
         return client
+
+    def invalidate_llm_client(self, agent_id: str | None = None) -> None:
+        """Drop cached LLM clients so updated config is used on next run."""
+        if agent_id is None:
+            self._llm_clients.clear()
+            return
+        self._llm_clients.pop(agent_id, None)
 
     async def _run_memory_inject(
         self,

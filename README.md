@@ -13,81 +13,22 @@
 
 ## 什么是 Agent？
 
-Agent 本质上是一个 **Loop**：
+Agent 本质上是一个 Loop：
 
 ```
-Input → LLM (思考) → Tool (行动) → Output → 循环
+Input -> LLM (思考) -> Tool (行动) -> Output -> 循环
 ```
 
-每一次循环，LLM 决定是继续行动还是返回结果。这个看似简单的模式，构成了 ChatGPT、Claude、Cursor 等一切 AI 应用的基石。
-
-**OpenAgents SDK** 让这个 Loop 变得可配置、可扩展、可观测。
-
----
-
-## 为什么选择 OpenAgents SDK？
-
-### 1. 插件化的 Agent Loop
-
-传统 Agent 开发：写代码 → 改代码 → 调试
-OpenAgents SDK：写配置 → 加载 → 运行
-
-```json
-{
-  "pattern": "react",      // 推理模式
-  "memory": "mem0",      // 记忆策略
-  "tools": ["search", "http"]  // 工具集
-}
-```
-
-每一个组件都是**可插拔**的：
-- 想换推理模式？改 `pattern` 字段
-- 想换记忆方式？改 `memory` 字段
-- 想加新工具？加到 `tools` 列表
-
-### 2. 生产级运行时
-
-Runtime 是 Agent 的"操作系统"，我们提供完整生产特性：
-
-| 特性 | 说明 |
-|------|------|
-| **Session 管理** | 并发控制、状态持久化、串行保障 |
-| **Event 总线** | 可观测性、调试钩子、审计日志 |
-| **Graceful Shutdown** | 优雅停机、确保任务完成 |
-| **错误恢复** | 重试、降级、异常捕获 |
-
-### 3. 灵活的扩展性
-
-```
-           ┌─────────────┐
-           │   Runtime   │  ← 运行时
-           └──────┬──────┘
-                  │
-    ┌────────────┼────────────┐
-    │            │            │
-┌───┴───┐  ┌────┴────┐  ┌──┴────┐
-│Memory │  │ Pattern │  │ Tools │
-└───────┘  └─────────┘  └───────┘
-```
-
-- **Memory** - 记忆层：窗口缓冲、向量检索、持久化存储
-- **Pattern** - 推理层：ReAct、Plan-Execute、Reflexion...
-- **Tools** - 能力层：14+ 内置工具、MCP 协议支持
-
-全部可自定义，全部可替换。
-
----
+OpenAgents SDK 把这个 Loop 拆成可配置、可替换、可观测的组件：Memory、Pattern、Tools、Runtime、Session、Events。
 
 ## 核心特性
 
-- **声明式配置** - 一份 JSON 定义 Agent 行为
-- **插件架构** - Tool、Pattern、Memory、Runtime 均可替换
-- **装饰器开发** - `@tool`、`@memory`、`@pattern` 快速定义插件
-- **多 LLM 支持** - OpenAI、Anthropic 兼容接口
-- **MCP 协议** - 无缝对接 Model Context Protocol
-- **可观测** - 完整 Event Bus 支持调试和审计
-
----
+- 声明式配置：一份 JSON 定义 Agent 行为
+- 插件架构：Memory、Pattern、Tool、Runtime、Session、Events 都可替换
+- 装饰器注册：`@tool`、`@memory`、`@pattern`、`@runtime`、`@session`
+- 多 LLM 支持：`mock`、`openai_compatible`、`anthropic`
+- MCP 支持：内置 `mcp` tool
+- 可观测：Event Bus + runtime lifecycle 事件
 
 ## 快速开始
 
@@ -95,97 +36,62 @@ Runtime 是 Agent 的"操作系统"，我们提供完整生产特性：
 uv add openagents-sdk
 ```
 
-```bash
-# 运行示例
-uv run examples/quickstart/run_demo.py
-```
-
-详细文档：[开发指南](docs/developer-guide.md)
-
----
-
-## 架构概览
-
-```
-┌─────────────────────────────────────────────┐
-│              agent.json                      │
-│  (声明式配置：Memory / Pattern / Tools)     │
-└─────────────────┬───────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────┐
-│                Runtime                       │
-│  ┌──────────────┬──────────────┐          │
-│  │   Session    │    Event     │          │
-│  │   Manager    │      Bus      │          │
-│  └──────────────┴──────────────┘          │
-└─────────────────┬───────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────┐
-│              Agent Loop                      │
-│                                          │
-│   ┌─────┐    ┌─────┐    ┌─────┐         │
-│   │ LLM │ ←→ │Tool │ ←→ │Memory│        │
-│   └─────┘    └─────┘    └─────┘         │
-│        ↑____________________↓              │
-│              (循环)                         │
-└─────────────────────────────────────────────┘
-```
-
----
-
-## 文档
-
-| 文档 | 说明 |
-|------|------|
-| [开发指南](docs/developer-guide.md) | 完整开发指南 |
-| [API 参考](docs/api-reference.md) | API 文档 |
-| [插件开发](docs/plugin-development.md) | 自定义插件 |
-| [配置参考](docs/configuration.md) | 配置选项详解 |
-
----
-
-## 开发
+运行仓库内示例：
 
 ```bash
-# 安装开发依赖
-uv sync --extra dev
-
-# 运行测试
-uv run --extra dev pytest -q
-```
-uv sync --extra dev
-
-# 运行测试
-uv run --extra dev pytest -q
+uv run python examples/quickstart/run_demo.py
 ```
 
-    out2 = await runtime.run(
-        agent_id="assistant",
-        session_id="demo",
-        input_text="/tool search memory injection",
-    )
-    print(out2)
+## 配置结构
 
+顶层配置：
 
-asyncio.run(main())
+```json
+{
+  "version": "1.0",
+  "runtime": {"type": "default"},
+  "session": {"type": "in_memory"},
+  "events": {"type": "async"},
+  "agents": [
+    {
+      "id": "assistant",
+      "name": "demo-agent",
+      "memory": {"type": "window_buffer", "on_error": "continue"},
+      "pattern": {"type": "react"},
+      "llm": {"provider": "mock"},
+      "tools": [{"id": "search", "type": "builtin_search"}],
+      "runtime": {
+        "max_steps": 16,
+        "step_timeout_ms": 30000,
+        "session_queue_size": 1000,
+        "event_queue_size": 2000
+      }
+    }
+  ]
+}
 ```
 
-## Config Rules
+说明：
 
-- Each plugin ref must set exactly one of `type` or `impl`.
-- For each agent, `tools[].id` must be unique.
-- `runtime.max_steps` and `runtime.step_timeout_ms` must be positive integers.
-- `memory.on_error` supports:
-  - `continue` (default): do not block main flow
-  - `fail`: stop run on memory failure
-- Optional `llm`:
-  - `provider`: `mock` or `openai_compatible`
-  - `openai_compatible` requires `api_base`
-  - `timeout_ms` must be positive
+- 顶层 `runtime` / `session` / `events` 选择全局插件实现
+- agent 内的 `runtime` 是运行参数，不是 runtime 插件替换入口
+- 插件引用至少要提供一个 `type` 或 `impl`；两者同时提供时 `impl` 优先
+- `llm` 是可选的；未配置时，Pattern 需要自己处理无 LLM 场景
 
-## LLM Config Example
+## LLM 配置
+
+本地或测试场景：
+
+```json
+{
+  "llm": {
+    "provider": "mock",
+    "model": "mock-react-v1"
+  }
+}
+```
+
+OpenAI 兼容接口：
 
 ```json
 {
@@ -201,83 +107,92 @@ asyncio.run(main())
 }
 ```
 
-Real-call example in repo:
-
-- `examples/openai_compatible/agent.json`
-- `examples/openai_compatible/run_demo.py`
-- `examples/openai_compatible/.env.example`
-
-`.env` fields:
-
-- `OPENAI_MODEL`
-- `OPENAI_BASE_URL`
-- `OPENAI_API_KEY`
-
-For local/offline development, use:
+Anthropic 兼容接口：
 
 ```json
 {
   "llm": {
-    "provider": "mock",
-    "model": "mock-react-v1"
+    "provider": "anthropic",
+    "model": "claude-3-haiku-20240307",
+    "api_key_env": "ANTHROPIC_API_KEY",
+    "timeout_ms": 30000
   }
 }
 ```
 
-## Builtin Plugin Names
+## 自定义插件
 
-- Memory:
-  - `buffer`
-  - `window_buffer`
-- Pattern:
-  - `react`
-- Tool:
-  - `builtin_search`
-
-## Custom Plugin Example
-
-In config:
+使用 `impl`：
 
 ```json
 {
-  "memory": { "impl": "my_plugins.memory.MyMemory" },
-  "pattern": { "impl": "my_plugins.pattern.MyPattern" },
-  "tools": [
-    { "id": "weather", "impl": "my_plugins.tools.WeatherTool" }
+  "runtime": {"impl": "my_plugins.runtime.CustomRuntime"},
+  "agents": [
+    {
+      "id": "assistant",
+      "name": "assistant",
+      "memory": {"impl": "my_plugins.memory.MyMemory"},
+      "pattern": {"impl": "my_plugins.pattern.MyPattern"},
+      "tools": [
+        {"id": "weather", "impl": "my_plugins.tools.WeatherTool"}
+      ]
+    }
   ]
 }
 ```
 
-Runnable custom example:
+使用装饰器注册后，也可以通过 `type` 引用：
 
-- Config: `examples/custom_impl/agent.json`
-- Plugins: `examples/custom_impl/plugins.py`
-- Script: `examples/custom_impl/run_demo.py`
-- Command: `uv run python examples/custom_impl/run_demo.py`
+```python
+from openagents import runtime
 
-Minimal contract:
+@runtime(name="custom")
+class CustomRuntime:
+    ...
+```
 
-- Memory plugin:
-  - expose `capabilities` (e.g. `memory.inject`, `memory.writeback`)
-  - implement `inject(context)` and optional `writeback(context)` behavior
-- Pattern plugin:
-  - expose `pattern.react`
-  - implement `react(context)` and return action dict:
-    - `{"type":"final","content":"..."}`
-    - `{"type":"continue"}`
-    - `{"type":"tool_call","tool":"<tool_id>","params":{...}}`
-- Tool plugin:
-  - expose `tool.invoke`
-  - implement `invoke(params, context)`
+```json
+{
+  "runtime": {"type": "custom"}
+}
+```
 
-## Test Scope
+## 示例
 
-Current suite covers:
+- Quickstart: `examples/quickstart/agent.json`
+  - `uv run python examples/quickstart/run_demo.py`
+- Custom plugins (`impl`): `examples/custom_impl/agent.json`
+  - `uv run python examples/custom_impl/run_demo.py`
+- OpenAI-compatible real call: `examples/openai_compatible/agent.json`
+  - `uv run python examples/openai_compatible/run_demo.py`
+- Research agent: `examples/research_agent/agent.json`
 
-- config parsing and strict validation
-- plugin loading and capability checks
-- runtime orchestration (inject/react/writeback)
-- memory error policy (`continue` and `fail`)
-- session pressure tests
-- output constraint tests
-- integration tests from file-based config
+## 文档
+
+- [开发指南](docs/developer-guide.md)
+- [配置参考](docs/configuration.md)
+- [插件开发](docs/plugin-development.md)
+- [API 参考](docs/api-reference.md)
+
+## 开发
+
+安装依赖：
+
+```bash
+uv sync --extra dev
+```
+
+运行测试：
+
+```bash
+uv run --extra dev pytest -q
+```
+
+## 当前测试覆盖
+
+- config parsing / validation
+- plugin loading / capability checks
+- runtime orchestration
+- memory error policy
+- reload / hot reload handler behavior
+- file-based integration examples

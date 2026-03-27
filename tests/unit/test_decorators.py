@@ -159,18 +159,23 @@ def test_session_decorator_with_name():
 
 def test_event_bus_decorator_without_args():
     """Test @event_bus decorator without arguments."""
-    @event_bus
+    from openagents.decorators import event_bus as event_bus_decorator
+
+    @event_bus_decorator
     class MyEventBus:
         pass
 
     assert get_event_bus("MyEventBus") is MyEventBus
-    assert MyEventBus._event_bus_name == "MyEventBus"
+    # Note: event_bus decorator uses _event_name, not _event_bus_name
+    assert MyEventBus._event_name == "MyEventBus"
     assert MyEventBus._is_event_bus is True
 
 
 def test_event_bus_decorator_with_name():
     """Test @event_bus decorator with custom name."""
-    @event_bus(name="custom_event_bus")
+    from openagents.decorators import event_bus as event_bus_decorator
+
+    @event_bus_decorator(name="custom_event_bus")
     class CustomEventBus:
         pass
 

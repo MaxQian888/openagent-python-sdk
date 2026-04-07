@@ -17,6 +17,7 @@ from openagents.interfaces.capabilities import (
     SKILL_TOOLS,
 )
 from openagents.interfaces.runtime import RunArtifact
+from openagents.interfaces.tool import PolicyDecision, ToolExecutionResult
 
 
 class InjectWritebackMemory:
@@ -409,6 +410,33 @@ class ArtifactPattern:
         return "artifact-done"
 
 
+class ToolCallingPattern:
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
+        self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
+        self.context = None
+
+    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+        from openagents.interfaces.pattern import ExecutionContext
+        self.context = ExecutionContext(
+            agent_id=agent_id,
+            session_id=session_id,
+            input_text=input_text,
+            state=state,
+            tools=tools,
+            llm_client=llm_client,
+            llm_options=llm_options,
+            event_bus=event_bus,
+        )
+
+    async def react(self) -> dict[str, Any]:
+        return {"type": "tool_call", "tool": "custom_tool", "params": {"value": self.context.input_text}}
+
+    async def execute(self) -> Any:
+        tool = self.context.tools["custom_tool"]
+        return await tool.invoke({"value": self.context.input_text}, self.context)
+
+
 class RuntimePromptSkill:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
@@ -477,3 +505,42 @@ class RuntimeLifecycleSkill:
             "skill_post_run": context.state.get("skill_post_run"),
         }
         return updated
+
+
+class PrefixingToolExecutor:
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
+
+    async def execute(self, request: Any) -> ToolExecutionResult:
+        data = await request.tool.invoke(request.params or {}, request.context)
+        return ToolExecutionResult(
+            tool_id=request.tool_id,
+            success=True,
+            data={
+                "executor": self.config.get("name", "prefixed"),
+                "data": data,
+            },
+        )
+
+    async def execute_stream(self, request: Any):
+        yield {
+            "type": "result",
+            "data": {
+                "executor": self.config.get("name", "prefixed"),
+                "tool_id": request.tool_id,
+            },
+        }
+
+
+class DenyToolExecutionPolicy:
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
+        self._deny_tools = set(self.config.get("deny_tools", []))
+
+    async def evaluate(self, request: Any) -> PolicyDecision:
+        if request.tool_id in self._deny_tools:
+            return PolicyDecision(
+                allowed=False,
+                reason=f"Tool '{request.tool_id}' blocked by DenyToolExecutionPolicy",
+            )
+        return PolicyDecision(allowed=True, metadata={"policy": "custom"})

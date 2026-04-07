@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import inspect
 from typing import TYPE_CHECKING, Any
 
@@ -42,10 +43,13 @@ from openagents.interfaces.runtime import (
 from openagents.interfaces.session import SessionArtifact
 from openagents.interfaces.tool import (
     ExecutionPolicy,
+    ExecutionPolicyPlugin,
     PolicyDecision,
     ToolExecutionRequest,
     ToolExecutionResult,
     ToolExecutionSpec,
+    ToolExecutor,
+    ToolExecutorPlugin,
 )
 
 
@@ -63,34 +67,42 @@ async def _maybe_await(value: Any) -> Any:
     return value
 
 
-class _AllowAllExecutionPolicy:
+def _import_symbol(path: str) -> Any:
+    if "." not in path:
+        raise ValueError(f"Invalid impl path: '{path}'")
+    module_name, attr_name = path.rsplit(".", 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, attr_name)
+
+
+def _instantiate(factory: Any, config: dict[str, Any]) -> Any:
+    if not callable(factory):
+        return factory
+    for call in (
+        lambda: factory(config=config),
+        lambda: factory(config),
+        lambda: factory(),
+    ):
+        try:
+            return call()
+        except TypeError:
+            continue
+    raise TypeError(f"Could not instantiate runtime dependency from {factory!r}")
+
+
+class _AllowAllExecutionPolicy(ExecutionPolicyPlugin):
     async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
         return PolicyDecision(allowed=True)
 
 
-class _DefaultToolExecutor:
+class _DefaultToolExecutor(ToolExecutorPlugin):
     async def execute(self, request: ToolExecutionRequest) -> ToolExecutionResult:
-        policy = getattr(request.context, "execution_policy", None)
-        decision = PolicyDecision(allowed=True)
-        if policy is not None and hasattr(policy, "evaluate"):
-            decision = await policy.evaluate(request)
-        if not decision.allowed:
-            exc = PermissionError(decision.reason or f"Tool '{request.tool_id}' denied by policy")
-            return ToolExecutionResult(
-                tool_id=request.tool_id,
-                success=False,
-                error=str(exc),
-                exception=exc,
-                metadata={"policy": dict(decision.metadata)},
-            )
-
         try:
             data = await request.tool.invoke(request.params or {}, request.context)
             return ToolExecutionResult(
                 tool_id=request.tool_id,
                 success=True,
                 data=data,
-                metadata={"policy": dict(decision.metadata)},
             )
         except Exception as exc:
             return ToolExecutionResult(
@@ -98,26 +110,26 @@ class _DefaultToolExecutor:
                 success=False,
                 error=str(exc),
                 exception=exc,
-                metadata={"policy": dict(decision.metadata)},
             )
 
     async def execute_stream(self, request: ToolExecutionRequest):
-        policy = getattr(request.context, "execution_policy", None)
-        decision = PolicyDecision(allowed=True)
-        if policy is not None and hasattr(policy, "evaluate"):
-            decision = await policy.evaluate(request)
-        if not decision.allowed:
-            raise PermissionError(decision.reason or f"Tool '{request.tool_id}' denied by policy")
-
         async for chunk in request.tool.invoke_stream(request.params or {}, request.context):
             yield chunk
 
 
 class _BoundTool:
-    def __init__(self, *, tool_id: str, tool: Any, executor: _DefaultToolExecutor):
+    def __init__(
+        self,
+        *,
+        tool_id: str,
+        tool: Any,
+        executor: ToolExecutor,
+        policy: ExecutionPolicy,
+    ):
         self._tool_id = tool_id
         self._tool = tool
         self._executor = executor
+        self._policy = policy
 
     def execution_spec(self) -> ToolExecutionSpec:
         get_spec = getattr(self._tool, "execution_spec", None)
@@ -126,15 +138,20 @@ class _BoundTool:
         return ToolExecutionSpec()
 
     async def invoke(self, params: dict[str, Any], context: Any) -> Any:
+        request = ToolExecutionRequest(
+            tool_id=self._tool_id,
+            tool=self._tool,
+            params=params or {},
+            context=context,
+            execution_spec=self.execution_spec(),
+            metadata={"bound_tool": True},
+        )
+        decision = await self._policy.evaluate(request)
+        if not decision.allowed:
+            raise PermissionError(decision.reason or f"Tool '{self._tool_id}' denied by policy")
+
         result = await self._executor.execute(
-            ToolExecutionRequest(
-                tool_id=self._tool_id,
-                tool=self._tool,
-                params=params or {},
-                context=context,
-                execution_spec=self.execution_spec(),
-                metadata={"bound_tool": True},
-            )
+            request
         )
         if result.success:
             return result.data
@@ -151,6 +168,9 @@ class _BoundTool:
             execution_spec=self.execution_spec(),
             metadata={"bound_tool": True},
         )
+        decision = await self._policy.evaluate(request)
+        if not decision.allowed:
+            raise PermissionError(decision.reason or f"Tool '{self._tool_id}' denied by policy")
         async for chunk in self._executor.execute_stream(request):
             yield chunk
 
@@ -196,6 +216,8 @@ class DefaultRuntime(RuntimePlugin):
         self._event_bus: EventBusPlugin | None = None
         self._session_manager: Any | None = None
         self._llm_clients: dict[str, Any | None] = {}
+        self._tool_executor: ToolExecutor | None = None
+        self._execution_policy: ExecutionPolicy | None = None
 
     @property
     def event_bus(self) -> EventBusPlugin:
@@ -247,8 +269,8 @@ class DefaultRuntime(RuntimePlugin):
 
         usage = RunUsage()
         artifacts = []
-        execution_policy = _AllowAllExecutionPolicy()
-        tool_executor = _DefaultToolExecutor()
+        execution_policy = self._get_execution_policy()
+        tool_executor = self._get_tool_executor()
 
         try:
             async with self._session_manager.session(request.session_id) as session_state:
@@ -262,7 +284,7 @@ class DefaultRuntime(RuntimePlugin):
                 session_state.pop("_runtime_last_output", None)
                 transcript = await self._load_transcript(request.session_id)
                 self._apply_runtime_budget(pattern=plugins.pattern, agent=agent)
-                bound_tools = self._bind_tools(plugins.tools, tool_executor)
+                bound_tools = self._bind_tools(plugins.tools, tool_executor, execution_policy)
 
                 await self._setup_pattern(
                     pattern=plugins.pattern,
@@ -382,10 +404,11 @@ class DefaultRuntime(RuntimePlugin):
     def _bind_tools(
         self,
         tools: dict[str, Any],
-        executor: _DefaultToolExecutor,
+        executor: ToolExecutor,
+        policy: ExecutionPolicy,
     ) -> dict[str, Any]:
         return {
-            tool_id: _BoundTool(tool_id=tool_id, tool=tool, executor=executor)
+            tool_id: _BoundTool(tool_id=tool_id, tool=tool, executor=executor, policy=policy)
             for tool_id, tool in tools.items()
         }
 
@@ -399,7 +422,7 @@ class DefaultRuntime(RuntimePlugin):
         llm_client: Any | None,
         llm_options: Any | None,
         transcript: list[dict[str, Any]],
-        tool_executor: _DefaultToolExecutor,
+        tool_executor: ToolExecutor,
         execution_policy: ExecutionPolicy,
         usage: RunUsage,
         artifacts: list[Any],
@@ -441,6 +464,90 @@ class DefaultRuntime(RuntimePlugin):
         context.execution_policy = execution_policy
         context.usage = usage
         context.artifacts = artifacts
+
+    def _get_tool_executor(self) -> ToolExecutor:
+        if self._tool_executor is not None:
+            return self._tool_executor
+        self._tool_executor = self._load_runtime_dependency(
+            key="tool_executor",
+            default_factory=_DefaultToolExecutor,
+            builtin_factories={"default": _DefaultToolExecutor},
+            required_methods=("execute", "execute_stream"),
+        )
+        return self._tool_executor
+
+    def _get_execution_policy(self) -> ExecutionPolicy:
+        if self._execution_policy is not None:
+            return self._execution_policy
+        self._execution_policy = self._load_runtime_dependency(
+            key="execution_policy",
+            default_factory=_AllowAllExecutionPolicy,
+            builtin_factories={"allow_all": _AllowAllExecutionPolicy},
+            required_methods=("evaluate",),
+        )
+        return self._execution_policy
+
+    def _load_runtime_dependency(
+        self,
+        *,
+        key: str,
+        default_factory: Any,
+        builtin_factories: dict[str, Any],
+        required_methods: tuple[str, ...],
+    ) -> Any:
+        raw = self.config.get(key)
+        if raw is None:
+            dependency = default_factory()
+            self._bind_runtime_dependency(dependency)
+            return dependency
+        if not isinstance(raw, dict):
+            raise TypeError(f"runtime.config.{key} must be an object")
+
+        dep_type = raw.get("type")
+        dep_impl = raw.get("impl")
+        dep_config = raw.get("config", {})
+        if dep_config is None:
+            dep_config = {}
+        if not isinstance(dep_config, dict):
+            raise TypeError(f"runtime.config.{key}.config must be an object")
+
+        if isinstance(dep_impl, str) and dep_impl.strip():
+            factory = _import_symbol(dep_impl.strip())
+        elif isinstance(dep_type, str) and dep_type.strip():
+            factory = builtin_factories.get(dep_type.strip())
+            if factory is None:
+                raise ValueError(
+                    f"Unknown runtime.config.{key}.type '{dep_type.strip()}'. "
+                    f"Available: {sorted(builtin_factories)}"
+                )
+        else:
+            raise ValueError(f"runtime.config.{key} must set one of 'type' or 'impl'")
+
+        dependency = _instantiate(factory, dep_config)
+        for method_name in required_methods:
+            if not callable(getattr(dependency, method_name, None)):
+                raise TypeError(
+                    f"runtime.config.{key} dependency '{type(dependency).__name__}' "
+                    f"must implement '{method_name}'"
+                )
+        self._bind_runtime_dependency(dependency)
+        return dependency
+
+    def _bind_runtime_dependency(self, dependency: Any) -> None:
+        if hasattr(dependency, "_event_bus"):
+            dependency._event_bus = self._event_bus
+        if hasattr(dependency, "_session_manager"):
+            dependency._session_manager = self._session_manager
+        if hasattr(dependency, "event_bus"):
+            try:
+                dependency.event_bus = self._event_bus
+            except Exception:
+                pass
+        if hasattr(dependency, "session_manager"):
+            try:
+                dependency.session_manager = self._session_manager
+            except Exception:
+                pass
 
     async def _load_transcript(self, session_id: str) -> list[dict[str, Any]]:
         loader = getattr(self._session_manager, "load_messages", None)

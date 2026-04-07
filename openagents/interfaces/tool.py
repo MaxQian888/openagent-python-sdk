@@ -112,6 +112,36 @@ class ToolExecutor(Protocol):
     ) -> AsyncIterator[dict[str, Any]]: ...
 
 
+class ExecutionPolicyPlugin(BasePlugin):
+    """Optional base class for execution policies."""
+
+    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
+        return PolicyDecision(allowed=True)
+
+
+class ToolExecutorPlugin(BasePlugin):
+    """Optional base class for tool executors."""
+
+    async def execute(self, request: ToolExecutionRequest) -> ToolExecutionResult:
+        try:
+            data = await request.tool.invoke(request.params or {}, request.context)
+            return ToolExecutionResult(tool_id=request.tool_id, success=True, data=data)
+        except Exception as exc:
+            return ToolExecutionResult(
+                tool_id=request.tool_id,
+                success=False,
+                error=str(exc),
+                exception=exc,
+            )
+
+    async def execute_stream(
+        self,
+        request: ToolExecutionRequest,
+    ) -> AsyncIterator[dict[str, Any]]:
+        async for chunk in request.tool.invoke_stream(request.params or {}, request.context):
+            yield chunk
+
+
 class ToolPlugin(BasePlugin):
     """Base tool plugin."""
 

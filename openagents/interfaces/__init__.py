@@ -52,6 +52,7 @@ from .session import (
 from .skill import SkillPlugin
 from .tool import (
     ExecutionPolicy,
+    ExecutionPolicyPlugin,
     PolicyDecision,
     PermanentToolError,
     RetryableToolError,
@@ -60,6 +61,7 @@ from .tool import (
     ToolExecutionResult,
     ToolExecutionSpec,
     ToolExecutor,
+    ToolExecutorPlugin,
     ToolPlugin,
     ToolResult,
 )
@@ -71,12 +73,14 @@ __all__ = [
     "PatternPlugin",
     "SkillPlugin",
     "ExecutionPolicy",
+    "ExecutionPolicyPlugin",
     "PolicyDecision",
     "ToolPlugin",
     "ToolExecutionSpec",
     "ToolExecutionRequest",
     "ToolExecutionResult",
     "ToolExecutor",
+    "ToolExecutorPlugin",
     "ToolError",
     "RetryableToolError",
     "PermanentToolError",

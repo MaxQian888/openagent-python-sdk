@@ -188,3 +188,68 @@ async def test_runtime_applies_skill_runtime_augmentation_hooks():
     assert result["state"]["skill_context_augmented"] is True
     assert result["state"]["skill_pre_run"] is True
     assert result["state"]["skill_post_run"] is True
+
+
+@pytest.mark.asyncio
+async def test_runtime_uses_configured_tool_executor():
+    payload = _payload(
+        "tests.fixtures.runtime_plugins.InjectWritebackMemory",
+        "tests.fixtures.runtime_plugins.ToolCallingPattern",
+    )
+    payload["runtime"] = {
+        "type": "default",
+        "config": {
+            "tool_executor": {
+                "impl": "tests.fixtures.runtime_plugins.PrefixingToolExecutor",
+                "config": {"name": "custom-executor"},
+            }
+        },
+    }
+    payload["agents"][0]["tools"] = [
+        {"id": "custom_tool", "impl": "tests.fixtures.custom_plugins.CustomTool"}
+    ]
+    config = load_config_dict(payload)
+    runtime = Runtime(config)
+
+    result = await runtime.run(
+        agent_id="assistant",
+        session_id="custom-executor",
+        input_text="hello",
+    )
+
+    assert result["executor"] == "custom-executor"
+    assert result["data"]["ok"] is True
+    assert result["data"]["params"] == {"value": "hello"}
+
+
+@pytest.mark.asyncio
+async def test_runtime_uses_configured_execution_policy():
+    payload = _payload(
+        "tests.fixtures.runtime_plugins.InjectWritebackMemory",
+        "tests.fixtures.runtime_plugins.ToolCallingPattern",
+    )
+    payload["runtime"] = {
+        "type": "default",
+        "config": {
+            "execution_policy": {
+                "impl": "tests.fixtures.runtime_plugins.DenyToolExecutionPolicy",
+                "config": {"deny_tools": ["custom_tool"]},
+            }
+        },
+    }
+    payload["agents"][0]["tools"] = [
+        {"id": "custom_tool", "impl": "tests.fixtures.custom_plugins.CustomTool"}
+    ]
+    config = load_config_dict(payload)
+    runtime = Runtime(config)
+
+    result = await runtime.run_detailed(
+        request=RunRequest(
+            agent_id="assistant",
+            session_id="denied-tool",
+            input_text="hello",
+        )
+    )
+
+    assert result.stop_reason == "failed"
+    assert "blocked by DenyToolExecutionPolicy" in (result.error or "")

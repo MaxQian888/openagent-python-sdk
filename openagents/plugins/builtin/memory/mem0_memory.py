@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from openagents.interfaces.memory import MemoryPlugin
 from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK
+
+logger = logging.getLogger(__name__)
 
 
 class Mem0Memory(MemoryPlugin):
@@ -123,7 +126,7 @@ class Mem0Memory(MemoryPlugin):
             await self._add_memory(client, memory_content, context.session_id)
 
         except Exception:
-            pass
+            logger.warning("Error writing memory to Mem0", exc_info=True)
 
     async def _search_memories(self, client, query: str, limit: int) -> list:
         import asyncio

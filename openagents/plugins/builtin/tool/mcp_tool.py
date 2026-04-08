@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from openagents.interfaces.capabilities import TOOL_INVOKE
 from openagents.interfaces.tool import ToolPlugin
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -125,12 +128,12 @@ class McpConnection:
             try:
                 await self._session.__aexit__(None, None, None)
             except Exception:
-                pass
+                logger.warning("Error closing MCP session", exc_info=True)
         if self._writer:
             try:
                 await self._writer.aclose()
             except Exception:
-                pass
+                logger.warning("Error closing MCP writer", exc_info=True)
 
 
 class McpTool(ToolPlugin):

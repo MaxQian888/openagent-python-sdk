@@ -2,7 +2,7 @@
 
 Supports:
 - Anthropic API (api.anthropic.com)
-- Anthropic-compatible APIs (e.g., LongCat, AWS Bedrock, etc.)
+- Anthropic-compatible APIs (e.g., LongCat, AWS Bedrock, MiniMax, etc.)
 """
 
 from __future__ import annotations
@@ -25,10 +25,10 @@ class AnthropicClient(LLMClient):
         api_base: "https://api.anthropic.com"
         api_key_env: "ANTHROPIC_API_KEY"
 
-        # LongCat (Anthropic-compatible)
+        # Anthropic-compatible gateways
         provider: "anthropic"
-        api_base: "https://api.longcat.chat/anthropic/v1"
-        api_key_env: "LONGCAT_API_KEY"
+        api_base: "https://api.minimaxi.com/anthropic"
+        api_key_env: "MINIMAX_API_KEY"
     """
 
     def __init__(
@@ -48,6 +48,11 @@ class AnthropicClient(LLMClient):
         self.default_temperature = default_temperature
         self.default_max_tokens = max_tokens
 
+    def _messages_endpoint(self) -> str:
+        if self.api_base.endswith("/v1"):
+            return f"{self.api_base}/messages"
+        return f"{self.api_base}/v1/messages"
+
     async def complete(
         self,
         *,
@@ -60,7 +65,6 @@ class AnthropicClient(LLMClient):
         chosen_temp = self.default_temperature if temperature is None else temperature
         chosen_max_tokens = max_tokens or self.default_max_tokens
 
-        # Convert OpenAI-style messages to Anthropic format
         anthropic_messages = []
         system_prompt = ""
 
@@ -69,7 +73,6 @@ class AnthropicClient(LLMClient):
             content = msg.get("content", "")
 
             if role == "system":
-                # Anthropic uses system prompt separately
                 system_prompt = content
             elif role in ("user", "assistant"):
                 anthropic_messages.append({
@@ -98,7 +101,7 @@ class AnthropicClient(LLMClient):
 
         def _request_once() -> str:
             req = request.Request(
-                url=f"{self.api_base}/messages",
+                url=self._messages_endpoint(),
                 data=json.dumps(payload).encode("utf-8"),
                 headers=headers,
                 method="POST",
@@ -110,12 +113,10 @@ class AnthropicClient(LLMClient):
         body = await asyncio.to_thread(_request_once)
         data = json.loads(body)
 
-        # Parse Anthropic response
         content_blocks = data.get("content", [])
         if not content_blocks:
             return ""
 
-        # Get text from first content block
         for block in content_blocks:
             if block.get("type") == "text":
                 return block.get("text", "")

@@ -4,8 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from openagents import memory, pattern, tool
-from openagents.interfaces.capabilities import MEMORY_INJECT, PATTERN_EXECUTE, PATTERN_REACT, TOOL_INVOKE
+from openagents import memory, pattern, skill, tool
+from openagents.interfaces.capabilities import (
+    MEMORY_INJECT,
+    PATTERN_EXECUTE,
+    PATTERN_REACT,
+    SKILL_METADATA,
+    SKILL_SYSTEM_PROMPT,
+    TOOL_INVOKE,
+)
 
 
 @memory
@@ -71,3 +78,18 @@ class DecoratorTool:
 
     async def invoke(self, params: dict[str, Any], context: Any) -> Any:
         return {"from_decorator": True, "params": params}
+
+
+@skill(name="decorated_skill")
+class DecoratorSkill:
+    """Skill registered via decorator."""
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
+        self.capabilities = {SKILL_SYSTEM_PROMPT, SKILL_METADATA}
+
+    def get_system_prompt(self, context: Any | None = None) -> str:
+        return "Decorator skill prompt"
+
+    def get_metadata(self) -> dict[str, Any]:
+        return {"decorated": True}

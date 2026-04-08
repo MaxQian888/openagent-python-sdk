@@ -9,3 +9,5 @@ __pycache__/
 questions.md
 .agent_memory/
 .claude/
+dist/
+examples/longcat/

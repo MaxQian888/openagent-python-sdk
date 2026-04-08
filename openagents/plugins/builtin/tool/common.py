@@ -9,6 +9,9 @@ from openagents.interfaces.tool import ToolPlugin
 
 
 class BuiltinSearchTool(ToolPlugin):
+    name = "builtin_search"
+    description = "Search the built-in knowledge corpus for relevant documents."
+
     _CORPUS = [
         {
             "title": "Agent Memory Design",
@@ -47,4 +50,14 @@ class BuiltinSearchTool(ToolPlugin):
             items = list(self._CORPUS)
 
         return {"query": query, "items": items[:limit]}
+
+    def schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query keywords"},
+                "limit": {"type": "integer", "description": "Max results to return"},
+            },
+            "required": ["query"],
+        }
 

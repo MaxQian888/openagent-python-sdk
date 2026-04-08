@@ -13,6 +13,9 @@ from openagents.interfaces.capabilities import TOOL_INVOKE
 class CalcTool(ToolPlugin):
     """Simple calculator for basic operations."""
 
+    name = "calc"
+    description = "Evaluate a mathematical expression and return the result."
+
     # Safe operators
     OPS = {
         ast.Add: operator.add,
@@ -66,6 +69,15 @@ class CalcTool(ToolPlugin):
             return {"expression": expression, "result": result}
         except ValueError as e:
             raise ValueError(f"Calculation error: {e}")
+
+    def schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "expression": {"type": "string", "description": "Math expression, e.g. '2 + 3 * 4'"},
+            },
+            "required": ["expression"],
+        }
 
 
 class PercentageTool(ToolPlugin):

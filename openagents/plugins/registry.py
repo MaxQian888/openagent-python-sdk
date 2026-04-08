@@ -9,6 +9,7 @@ from openagents.decorators import (
     _MEMORY_REGISTRY,
     _PATTERN_REGISTRY,
     _RUNTIME_REGISTRY,
+    _SKILL_REGISTRY,
     _SESSION_REGISTRY,
     _TOOL_REGISTRY,
 )
@@ -66,6 +67,7 @@ _DECORATOR_REGISTRY_MAP: dict[str, dict[str, type[Any]]] = {
     "memory": _MEMORY_REGISTRY,
     "pattern": _PATTERN_REGISTRY,
     "runtime": _RUNTIME_REGISTRY,
+    "skill": _SKILL_REGISTRY,
     "session": _SESSION_REGISTRY,
     "events": _EVENT_REGISTRY,
     "tool": _TOOL_REGISTRY,
@@ -86,6 +88,7 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     "runtime": {
         "default": DefaultRuntime,
     },
+    "skill": {},
     "session": {
         "in_memory": InMemorySessionManager,
     },
@@ -156,4 +159,3 @@ def list_builtin_plugins(kind: str) -> list[str]:
     builtin_keys = set(_BUILTIN_REGISTRY.get(kind, {}).keys())
     decorator_keys = set(_DECORATOR_REGISTRY_MAP.get(kind, {}).keys())
     return sorted(builtin_keys | decorator_keys)
-

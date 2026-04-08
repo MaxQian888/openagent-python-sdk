@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "agents": [
+    {
+      "id": "runtime-composition",
+      "name": "runtime-composition",
+      "memory": {"type": "buffer", "on_error": "continue"},
+      "pattern": {"impl": "examples.runtime_composition.plugins.RuntimeCompositionPattern"},
+      "llm": {"provider": "mock"},
+      "tool_executor": {
+        "type": "safe",
+        "config": {"default_timeout_ms": 2000}
+      },
+      "execution_policy": {
+        "type": "filesystem",
+        "config": {
+          "read_roots": ["examples/runtime_composition/workspace"],
+          "allow_tools": ["read_file"]
+        }
+      },
+      "context_assembler": {
+        "type": "summarizing",
+        "config": {
+          "max_messages": 1,
+          "max_artifacts": 2,
+          "include_summary_message": true
+        }
+      },
+      "tools": [
+        {"id": "read_file", "type": "read_file"}
+      ],
+      "runtime": {
+        "max_steps": 4,
+        "step_timeout_ms": 30000,
+        "session_queue_size": 1000,
+        "event_queue_size": 2000
+      }
+    }
+  ]
+}

@@ -233,6 +233,7 @@ class LLMOptions:
     temperature: float | None = None
     max_tokens: int | None = None
     timeout_ms: int = 30000
+    stream_endpoint: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -264,6 +265,11 @@ class LLMOptions:
         timeout_ms = data.get("timeout_ms", 30000)
         if not isinstance(timeout_ms, int) or timeout_ms <= 0:
             raise ValueError("'llm.timeout_ms' must be a positive integer")
+        stream_endpoint = data.get("stream_endpoint")
+        if stream_endpoint is not None and (
+            not isinstance(stream_endpoint, str) or not stream_endpoint.strip()
+        ):
+            raise ValueError("'llm.stream_endpoint' must be a non-empty string when provided")
 
         known = {
             "provider",
@@ -273,6 +279,7 @@ class LLMOptions:
             "temperature",
             "max_tokens",
             "timeout_ms",
+            "stream_endpoint",
         }
         extra = {k: v for k, v in data.items() if k not in known}
         return cls(
@@ -283,6 +290,7 @@ class LLMOptions:
             temperature=float(temperature) if temperature is not None else None,
             max_tokens=max_tokens,
             timeout_ms=timeout_ms,
+            stream_endpoint=stream_endpoint.strip() if isinstance(stream_endpoint, str) else None,
             extra=extra,
         )
 

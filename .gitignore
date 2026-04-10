@@ -11,3 +11,8 @@ questions.md
 .claude/
 dist/
 examples/longcat/
+docs-v2/
+examples/
+openagent_cli/
+CHANGELOG.md
+.claude/

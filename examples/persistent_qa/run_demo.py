@@ -1,101 +1,87 @@
-"""Persistent QA Assistant Demo.
+"""Persistent QA Assistant Demo — file-backed memory with search fallback.
 
-A persistent question-answering assistant that:
-- Remembers past conversations
-- Uses LongCat LLM for answering
-- Falls back to memory search when LLM fails
-- Supports weather and search tools
+Demonstrates:
+  • Custom PersistentMemory plugin (stores history to JSON files)
+  • Keyword search across persisted history
+  • Multi-turn conversation with persistence across sessions
+  • MiniMax LLM via Anthropic-compatible protocol
 
-Usage:
-    # Set API key
-    export LONGCAT_API_KEY=sk-xxx
+Setup:
+    cp .env.example .env
+    # add MINIMAX_API_KEY
 
-    # Run demo
-    python run_demo.py
+Run:
+    uv run python examples/persistent_qa/run_demo.py
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
 
-# Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from openagents import Runtime
-from openagents.config.loader import load_config
 
 
-def load_env() -> None:
-    """Load environment variables."""
-    env_path = Path(__file__).parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key and key not in os.environ:
-                os.environ[key] = value
+def load_env(path: Path) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        key, val = key.strip(), val.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
+async def show_history(session_id: str) -> None:
+    """Show stored history from disk."""
+    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in session_id)
+    memory_file = Path(".agent_memory") / f"memory_{safe_id}.json"
+    if memory_file.exists():
+        with open(memory_file, encoding="utf-8") as f:
+            history = json.load(f)
+        print(f"[HISTORY] {len(history)} items stored:")
+        for i, item in enumerate(history, 1):
+            inp = item.get("input", "")[:50]
+            ts = item.get("timestamp", "")[:19]
+            print(f"  {i}. [{ts}] {inp}...")
+    else:
+        print("[HISTORY] No file found")
 
 
 async def main() -> None:
-    """Run the persistent QA assistant demo."""
-    import pathlib
+    demo_dir = Path(__file__).parent
+    load_env(demo_dir / ".env")
 
-    # Load environment
-    load_env()
+    if not os.environ.get("MINIMAX_API_KEY"):
+        print("[ERROR] MINIMAX_API_KEY not set!")
+        print("        Copy .env.example to .env and add your MiniMax API key.")
+        return
 
-    # Check API key
-    api_key = os.environ.get("LONGCAT_API_KEY")
-    if not api_key:
-        print("[WARN] LONGCAT_API_KEY not found in environment")
-        print("[INFO] Set it via: export LONGCAT_API_KEY=sk-xxx")
-        print("[INFO] Or create .env file with LONGCAT_API_KEY=sk-xxx")
-        print()
+    print("[INFO] Using MiniMax LLM (Anthropic-compatible protocol)\n")
 
-    # Load config
-    demo_dir = pathlib.Path(__file__).parent
-    config_path = demo_dir / "agent.json"
-    config = load_config(config_path)
-
-    # Override API key if provided
-    if api_key and config.agents:
-        config.agents[0].llm.api_key = api_key
-
-    # Create runtime
-    runtime = Runtime(config)
-
-    # Setup event listeners
-    async def on_event(event):
-        print(f"  [EVENT] {event.name}")
-
-    runtime.event_bus.subscribe("llm.", on_event)
-    runtime.event_bus.subscribe("tool.", on_event)
-    runtime.event_bus.subscribe("qa.", on_event)
+    runtime = Runtime.from_config(demo_dir / "agent.json")
+    session_id = "qa-demo-001"
 
     print("=" * 60)
-    print("Persistent QA Assistant Demo")
+    print("Persistent QA Assistant")
     print("=" * 60)
-    print()
-    print("This assistant:")
-    print("- Remembers past conversations (persisted to JSON files)")
-    print("- Uses LongCat LLM for answering")
-    print("- Falls back to memory search when LLM fails")
-    print("- Supports weather and search tools")
     print()
     print("Commands:")
-    print("  /new     - Start a new session")
-    print("  /history - Show conversation history")
-    print("  /quit    - Exit")
+    print("  /new      — start a new session")
+    print("  /history  — show persisted conversation history")
+    print("  /quit     — exit")
     print()
 
-    # Session management
-    session_id = "qa-session-001"
+    # Show existing history if any
+    await show_history(session_id)
 
     try:
         while True:
@@ -110,37 +96,20 @@ async def main() -> None:
 
             if user_input.startswith("/"):
                 cmd = user_input.lower()
-
                 if cmd in ("/quit", "/exit", "/q"):
                     print("Goodbye!")
                     break
-
                 elif cmd == "/new":
-                    session_id = f"qa-session-{hash(user_input) % 100000}"
+                    session_id = f"qa-demo-{hash(user_input) % 100000:05d}"
                     print(f"[INFO] New session: {session_id}")
                     continue
-
                 elif cmd == "/history":
-                    # Show stored history
-                    import json
-                    from pathlib import Path
-                    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in session_id)
-                    memory_file = Path(".agent_memory") / f"memory_{safe_id}.json"
-                    if memory_file.exists():
-                        with open(memory_file, "r", encoding="utf-8") as f:
-                            history = json.load(f)
-                        print(f"[HISTORY] {len(history)} conversations stored:")
-                        for i, item in enumerate(history, 1):
-                            print(f"  {i}. Q: {item.get('input', '')[:50]}...")
-                    else:
-                        print("[HISTORY] No history found")
+                    await show_history(session_id)
                     continue
-
                 else:
-                    print(f"[WARN] Unknown command: {cmd}")
+                    print(f"[WARN] Unknown command: {user_input}")
                     continue
 
-            # Run agent
             print(f"[Session] {session_id}")
             print("[Agent] ", end="", flush=True)
 
@@ -151,13 +120,7 @@ async def main() -> None:
                     input_text=user_input,
                 )
                 print(result)
-
-                # Show memory status
-                state = await runtime.session_manager.get_state(session_id)
-                memory_view = state.get("_pattern_context", {}).get("memory_view", {})
-                if memory_view.get("saved"):
-                    print(f"  [MEMORY] Saved to persistent storage")
-
+                print("  [MEMORY] Saved to .agent_memory/")
             except Exception as e:
                 print(f"[ERROR] {e}")
 

@@ -14,7 +14,13 @@
       "mcp__exa__get_code_context_exa",
       "Bash(wc:*)",
       "mcp__tavily__tavily_extract",
-      "Bash(uv sync:*)"
+      "Bash(uv sync:*)",
+      "Bash(cd:*)",
+      "Bash(for f:*)",
+      "Bash(do uv:*)",
+      "Bash(echo \"$f OK\")",
+      "Bash(done)",
+      "Bash(python3:*)"
     ]
   }
 }

@@ -1,13 +1,38 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
 from pathlib import Path
 
 from openagents.runtime import Runtime
 
 
+def load_env(path: Path) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        key, val = key.strip(), val.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
 async def main() -> None:
-    config_path = Path(__file__).with_name("agent.json")
+    demo_dir = Path(__file__).parent
+    load_env(demo_dir / ".env")
+
+    if not os.environ.get("MINIMAX_API_KEY"):
+        print("[ERROR] MINIMAX_API_KEY not set!")
+        print("        Copy .env.example to .env and add your MiniMax API key.")
+        return
+
+    print("[INFO] Using MiniMax LLM (Anthropic-compatible protocol)\n")
+
+    config_path = demo_dir / "agent.json"
     runtime = Runtime.from_config(config_path)
 
     out1 = await runtime.run(

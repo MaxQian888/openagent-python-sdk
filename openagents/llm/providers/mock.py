@@ -12,12 +12,14 @@ class MockLLMClient(LLMClient):
     async def complete(
         self,
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | None = None,
     ) -> str:
-        _ = (model, temperature, max_tokens)
+        _ = (model, temperature, max_tokens, tools, tool_choice)
         user_text = ""
         for msg in reversed(messages):
             if msg.get("role") == "user":
@@ -82,4 +84,3 @@ class MockLLMClient(LLMClient):
         values.setdefault("input", "")
         values.setdefault("history_count", history_count)
         return values
-

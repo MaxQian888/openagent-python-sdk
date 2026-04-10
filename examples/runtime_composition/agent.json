@@ -4,18 +4,35 @@
     {
       "id": "runtime-composition",
       "name": "runtime-composition",
-      "memory": {"type": "buffer", "on_error": "continue"},
-      "pattern": {"impl": "examples.runtime_composition.plugins.RuntimeCompositionPattern"},
-      "llm": {"provider": "mock"},
+      "memory": {
+        "type": "buffer",
+        "on_error": "continue"
+      },
+      "pattern": {
+        "impl": "examples.runtime_composition.plugins.RuntimeCompositionPattern"
+      },
+      "llm": {
+        "provider": "anthropic",
+        "api_base": "https://api.minimax.chat/anthropic/v1",
+        "api_key_env": "MINIMAX_API_KEY",
+        "model": "MiniMax-M2.7",
+        "timeout_ms": 60000
+      },
       "tool_executor": {
         "type": "safe",
-        "config": {"default_timeout_ms": 2000}
+        "config": {
+          "default_timeout_ms": 2000
+        }
       },
       "execution_policy": {
         "type": "filesystem",
         "config": {
-          "read_roots": ["examples/runtime_composition/workspace"],
-          "allow_tools": ["read_file"]
+          "read_roots": [
+            "examples/runtime_composition/workspace"
+          ],
+          "allow_tools": [
+            "read_file"
+          ]
         }
       },
       "context_assembler": {
@@ -27,7 +44,10 @@
         }
       },
       "tools": [
-        {"id": "read_file", "type": "read_file"}
+        {
+          "id": "read_file",
+          "type": "read_file"
+        }
       ],
       "runtime": {
         "max_steps": 4,

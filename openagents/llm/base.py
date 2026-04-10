@@ -11,7 +11,7 @@ class LLMChunk:
     """Streaming chunk from LLM."""
 
     type: str  # "content_block_delta", "message_stop", "error"
-    delta: str | None = None  # Text delta
+    delta: dict[str, Any] | str | None = None  # Delta payload or text delta
     content: dict | None = None  # Content block
     error: str | None = None
 
@@ -20,10 +20,12 @@ class LLMClient:
     async def complete(
         self,
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | None = None,
     ) -> str:
         """Complete a chat request synchronously.
 
@@ -41,10 +43,12 @@ class LLMClient:
     async def complete_stream(
         self,
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | None = None,
     ) -> AsyncIterator[LLMChunk]:
         """Complete a chat request with streaming.
 
@@ -63,7 +67,8 @@ class LLMClient:
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
+            tools=tools,
+            tool_choice=tool_choice,
         )
         yield LLMChunk(type="content_block_delta", delta=result)
         yield LLMChunk(type="message_stop")
-

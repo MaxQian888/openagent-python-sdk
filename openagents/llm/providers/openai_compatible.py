@@ -30,11 +30,14 @@ class OpenAICompatibleClient(LLMClient):
     async def complete(
         self,
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | None = None,
     ) -> str:
+        _ = (tools, tool_choice)
         chosen_model = model or self.model
         chosen_temp = self.default_temperature if temperature is None else temperature
 

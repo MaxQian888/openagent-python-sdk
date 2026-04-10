@@ -30,6 +30,7 @@ def create_llm_client(llm: LLMOptions | None) -> LLMClient | None:
             timeout_ms=llm.timeout_ms,
             default_temperature=llm.temperature,
             max_tokens=llm.max_tokens or 1024,
+            stream_endpoint=llm.stream_endpoint,
         )
 
     if provider == "openai_compatible":

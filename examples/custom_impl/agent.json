@@ -3,29 +3,45 @@
   "agents": [
     {
       "id": "custom-agent",
-      "name": "custom-agent",
+      "name": "Skill Hooks Demo",
       "memory": {
-        "impl": "examples.custom_impl.plugins.CustomMemory",
+        "type": "buffer",
         "on_error": "continue"
       },
       "pattern": {
-        "impl": "examples.custom_impl.plugins.CustomPattern"
+        "impl": "examples.custom_impl.plugins.DemoPattern"
+      },
+      "skill": {
+        "impl": "examples.custom_impl.plugins.DemoSkill"
       },
       "llm": {
-        "provider": "mock"
+        "provider": "anthropic",
+        "api_base": "https://api.minimax.chat/anthropic/v1",
+        "api_key_env": "MINIMAX_API_KEY",
+        "model": "MiniMax-M2.7",
+        "timeout_ms": 60000
       },
       "tools": [
         {
-          "id": "custom_tool",
-          "impl": "examples.custom_impl.plugins.CustomTool",
+          "id": "echo_tool",
+          "impl": "examples.custom_impl.plugins.EchoTool",
           "config": {
-            "prefix": "custom"
+            "prefix": "demo"
           }
+        },
+        {
+          "id": "calc_tool",
+          "impl": "examples.custom_impl.plugins.CalcTool"
+        },
+        {
+          "id": "forbidden_tool",
+          "type": "execute_command",
+          "enabled": true
         }
       ],
       "runtime": {
         "max_steps": 8,
-        "step_timeout_ms": 1000,
+        "step_timeout_ms": 10000,
         "session_queue_size": 100,
         "event_queue_size": 100
       }

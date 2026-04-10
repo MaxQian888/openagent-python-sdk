@@ -18,8 +18,10 @@
         }
       },
       "llm": {
-        "provider": "mock",
-        "model": "mock-react-v1",
+        "provider": "anthropic",
+        "api_base": "https://api.minimax.chat/anthropic/v1",
+        "api_key_env": "MINIMAX_API_KEY",
+        "model": "MiniMax-M2.7",
         "temperature": 0
       },
       "tools": [

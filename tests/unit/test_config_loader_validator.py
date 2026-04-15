@@ -3,6 +3,7 @@ import json
 import pytest
 
 from openagents.config.loader import load_config
+from openagents.config.loader import load_config_dict
 from openagents.errors.exceptions import ConfigError
 
 
@@ -51,19 +52,6 @@ def test_load_config_valid_config(tmp_path):
     assert config.agents[0].pattern.type == "react"
 
 
-def test_load_config_accepts_skill_config(tmp_path):
-    payload = _base_config()
-    payload["agents"][0]["skill"] = {
-        "impl": "tests.fixtures.custom_plugins.CustomSkill",
-        "config": {"focus": "training"},
-    }
-    config_path = _write(tmp_path, payload)
-
-    config = load_config(config_path)
-    assert config.agents[0].skill is not None
-    assert config.agents[0].skill.impl == "tests.fixtures.custom_plugins.CustomSkill"
-
-
 def test_load_config_accepts_agent_level_runtime_seams(tmp_path):
     payload = _base_config()
     payload["agents"][0]["tool_executor"] = {
@@ -104,15 +92,6 @@ def test_load_config_rejects_missing_type_and_impl(tmp_path):
     config_path = _write(tmp_path, payload)
 
     with pytest.raises(ConfigError, match="at least one of 'type' or 'impl'"):
-        load_config(config_path)
-
-
-def test_load_config_rejects_skill_missing_type_and_impl(tmp_path):
-    payload = _base_config()
-    payload["agents"][0]["skill"] = {"config": {"focus": "training"}}
-    config_path = _write(tmp_path, payload)
-
-    with pytest.raises(ConfigError, match="agents\\['assistant'\\]\\.skill"):
         load_config(config_path)
 
 
@@ -192,3 +171,39 @@ def test_load_config_rejects_openai_compatible_without_api_base(tmp_path):
 
     with pytest.raises(ConfigError, match="api_base"):
         load_config(config_path)
+
+
+def test_load_config_rejects_missing_file(tmp_path):
+    with pytest.raises(ConfigError, match="does not exist"):
+        load_config(tmp_path / "missing.json")
+
+
+def test_load_config_rejects_directory_path(tmp_path):
+    with pytest.raises(ConfigError, match="is not a file"):
+        load_config(tmp_path)
+
+
+def test_load_config_rejects_invalid_json(tmp_path):
+    path = tmp_path / "agent.json"
+    path.write_text("{bad json", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="Invalid JSON"):
+        load_config(path)
+
+
+def test_load_config_dict_wraps_schema_value_errors():
+    with pytest.raises(ConfigError, match="must be an array"):
+        load_config_dict({"version": "1.0", "agents": "bad"})  # type: ignore[arg-type]
+
+
+def test_load_config_wraps_read_oserror(monkeypatch, tmp_path):
+    path = tmp_path / "agent.json"
+    path.write_text("{}", encoding="utf-8")
+
+    def _boom(self, *args, **kwargs):
+        raise OSError("disk failure")
+
+    monkeypatch.setattr(type(path), "read_text", _boom, raising=False)
+
+    with pytest.raises(ConfigError, match="Failed to read config file"):
+        load_config(path)

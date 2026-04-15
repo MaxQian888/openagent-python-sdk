@@ -38,7 +38,6 @@ from typing import Any, Callable, TypeVar, overload
 _TOOL_REGISTRY: dict[str, type] = {}
 _PATTERN_REGISTRY: dict[str, type] = {}
 _MEMORY_REGISTRY: dict[str, type] = {}
-_SKILL_REGISTRY: dict[str, type] = {}
 _RUNTIME_REGISTRY: dict[str, type] = {}
 _SESSION_REGISTRY: dict[str, type] = {}
 _EVENT_REGISTRY: dict[str, type] = {}
@@ -200,38 +199,6 @@ def runtime(name: str | None = None):
         cls._runtime_name = runtime_name
         cls._is_runtime = True
         return cls
-    return decorator
-
-
-def skill(name: str | None = None):
-    """Decorator to register a skill class.
-
-    Usage:
-        @skill
-        class MySkill:
-            def get_system_prompt(self, context=None):
-                return "..."
-
-        @skill(name="alchemy")
-        class AlchemySkill:
-            ...
-    """
-    if isinstance(name, type):
-        cls = name
-        skill_name = cls.__name__
-        _SKILL_REGISTRY[skill_name] = cls
-        cls._skill_name = skill_name
-        cls._is_skill = True
-        return cls
-
-    def decorator(cls: type) -> type:
-        skill_name = name or cls.__name__
-        _SKILL_REGISTRY[skill_name] = cls
-
-        cls._skill_name = skill_name
-        cls._is_skill = True
-        return cls
-
     return decorator
 
 
@@ -427,11 +394,6 @@ def get_runtime(name: str) -> type | None:
     return _RUNTIME_REGISTRY.get(name)
 
 
-def get_skill(name: str) -> type | None:
-    """Get a registered skill by name."""
-    return _SKILL_REGISTRY.get(name)
-
-
 def get_session(name: str) -> type | None:
     """Get a registered session by name."""
     return _SESSION_REGISTRY.get(name)
@@ -485,11 +447,6 @@ def list_memories() -> list[str]:
 def list_runtimes() -> list[str]:
     """List all registered runtime names."""
     return list(_RUNTIME_REGISTRY.keys())
-
-
-def list_skills() -> list[str]:
-    """List all registered skill names."""
-    return list(_SKILL_REGISTRY.keys())
 
 
 def list_sessions() -> list[str]:

@@ -7,7 +7,6 @@ from openagents.decorators import (
     pattern,
     memory,
     runtime,
-    skill,
     session,
     event_bus,
     tool_executor,
@@ -19,7 +18,6 @@ from openagents.decorators import (
     get_pattern,
     get_memory,
     get_runtime,
-    get_skill,
     get_session,
     get_event_bus,
     get_tool_executor,
@@ -31,7 +29,6 @@ from openagents.decorators import (
     list_patterns,
     list_memories,
     list_runtimes,
-    list_skills,
     list_sessions,
     list_event_buses,
     list_tool_executors,
@@ -154,27 +151,6 @@ def test_runtime_decorator_with_name():
 
     assert get_runtime("custom_runtime") is CustomRuntime
 
-
-def test_skill_decorator_without_args():
-    """Test @skill decorator without arguments."""
-    @skill
-    class MySkill:
-        pass
-
-    assert get_skill("MySkill") is MySkill
-    assert MySkill._skill_name == "MySkill"
-    assert MySkill._is_skill is True
-
-
-def test_skill_decorator_with_name():
-    """Test @skill decorator with custom name."""
-    @skill(name="alchemy")
-    class AlchemySkill:
-        pass
-
-    assert get_skill("alchemy") is AlchemySkill
-
-
 def test_session_decorator_without_args():
     """Test @session decorator without arguments."""
     @session
@@ -274,9 +250,6 @@ def test_list_functions():
     runtimes = list_runtimes()
     assert isinstance(runtimes, list)
 
-    skills = list_skills()
-    assert isinstance(skills, list)
-
     sessions = list_sessions()
     assert isinstance(sessions, list)
 
@@ -305,7 +278,6 @@ def test_get_nonexistent():
     assert get_pattern("nonexistent_pattern") is None
     assert get_memory("nonexistent_memory") is None
     assert get_runtime("nonexistent_runtime") is None
-    assert get_skill("nonexistent_skill") is None
     assert get_session("nonexistent_session") is None
     assert get_event_bus("nonexistent_event_bus") is None
     assert get_tool_executor("nonexistent_tool_executor") is None

@@ -23,7 +23,6 @@ def _minimal_config(agent_id: str = "test_agent") -> dict:
                 "memory": {"impl": "openagents.plugins.builtin.memory.buffer.BufferMemory", "on_error": "continue"},
                 "pattern": {"impl": "openagents.plugins.builtin.pattern.react.ReActPattern"},
                 "llm": {"provider": "mock"},
-                "skill": {"impl": "tests.fixtures.custom_plugins.CustomSkill"},
                 "tools": [],
                 "runtime": {
                     "max_steps": 3,
@@ -146,9 +145,7 @@ async def test_runtime_get_agent_info():
     assert info["name"] == "Test Agent"
     assert "memory" in info
     assert "pattern" in info
-    assert "skill" in info
     assert "tools" in info
-    assert info["loaded_plugins"]["skill"] == "CustomSkill"
     await runtime.close()
 
 

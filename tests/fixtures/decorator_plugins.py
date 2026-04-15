@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from openagents import followup_resolver, memory, pattern, response_repair_policy, skill, tool
+from openagents import followup_resolver, memory, pattern, response_repair_policy, tool
 from openagents.interfaces.followup import FollowupResolution
 from openagents.interfaces.response_repair import ResponseRepairDecision
 from openagents import context_assembler, execution_policy, tool_executor
@@ -82,22 +82,6 @@ class DecoratorTool:
 
     async def invoke(self, params: dict[str, Any], context: Any) -> Any:
         return {"from_decorator": True, "params": params}
-
-
-@skill(name="decorated_skill")
-class DecoratorSkill:
-    """Skill registered via decorator."""
-
-    def __init__(self, config: dict[str, Any] | None = None):
-        self.config = config or {}
-        self.capabilities = {SKILL_SYSTEM_PROMPT, SKILL_METADATA}
-
-    def get_system_prompt(self, context: Any | None = None) -> str:
-        return "Decorator skill prompt"
-
-    def get_metadata(self) -> dict[str, Any]:
-        return {"decorated": True}
-
 
 @followup_resolver(name="decorated_followup_resolver")
 class DecoratorFollowupResolver:

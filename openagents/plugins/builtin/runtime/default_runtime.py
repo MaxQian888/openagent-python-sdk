@@ -76,16 +76,12 @@ def _import_symbol(path: str) -> Any:
 def _instantiate(factory: Any, config: dict[str, Any]) -> Any:
     if not callable(factory):
         return factory
-    for call in (
-        lambda: factory(config=config),
-        lambda: factory(config),
-        lambda: factory(),
-    ):
-        try:
-            return call()
-        except TypeError:
-            continue
-    raise TypeError(f"Could not instantiate runtime dependency from {factory!r}")
+    try:
+        return factory(config=config)
+    except TypeError as exc:
+        raise TypeError(
+            f"Could not instantiate runtime dependency from {factory!r}: {exc}"
+        ) from exc
 
 
 class _AllowAllExecutionPolicy(ExecutionPolicyPlugin):

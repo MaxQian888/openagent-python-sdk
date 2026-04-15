@@ -1,5 +1,7 @@
 """Tests for decorators module."""
 
+import warnings
+
 import pytest
 
 from openagents.decorators import (
@@ -72,6 +74,18 @@ def test_tool_decorator_class():
 
     assert get_tool("my_class") is MyToolClass
     assert MyToolClass._tool_name == "my_class"
+
+
+def test_tool_decorator_warns_when_shadowing_builtin_name():
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+
+        @tool(name="calc")
+        async def builtin_shadow(params, context):
+            return {"ok": True}
+
+    assert get_tool("calc") is builtin_shadow
+    assert any("builtin" in str(item.message).lower() for item in caught)
 
 
 def test_pattern_decorator_without_args():

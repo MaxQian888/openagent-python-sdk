@@ -75,6 +75,29 @@ class SlowTool:
         return {"ok": True, "params": params}
 
 
+class LegacyPositionalMemory:
+    def __init__(self, config: dict[str, Any] | None = None, /):
+        self.config = config or {}
+        self.capabilities = {MEMORY_INJECT}
+
+    async def inject(self, context: Any) -> None:
+        return None
+
+
+class ExplodingKeywordMemory:
+    def __init__(self, *, config: dict[str, Any] | None = None):
+        _ = config
+        raise TypeError("keyword constructor blew up")
+
+
+class NoInvokeTool:
+    capabilities = {TOOL_INVOKE}
+
+    def __init__(self, *, config: dict[str, Any] | None = None):
+        _ = config
+        raise RuntimeError("constructor should not run")
+
+
 class BadPatternNoCapability:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}

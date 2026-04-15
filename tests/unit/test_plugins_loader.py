@@ -1,5 +1,7 @@
 """Tests for plugins loader."""
 
+import warnings
+
 import pytest
 
 from openagents.config.loader import load_config_dict
@@ -11,7 +13,7 @@ from openagents.plugins.loader import (
     load_skills_plugin,
     load_tool_plugin,
 )
-from openagents.errors.exceptions import PluginLoadError
+from openagents.errors.exceptions import CapabilityError, PluginLoadError
 
 
 def _config_with_agent(agent_override: dict = None) -> dict:
@@ -165,6 +167,33 @@ def test_load_tool_plugin_invalid_impl():
         load_tool_plugin(ref)
 
 
+def test_load_memory_plugin_rejects_positional_only_constructor():
+    from openagents.config.schema import MemoryRef
+
+    ref = MemoryRef(impl="tests.fixtures.custom_plugins.LegacyPositionalMemory")
+
+    with pytest.raises(PluginLoadError):
+        load_memory_plugin(ref)
+
+
+def test_load_memory_plugin_surfaces_constructor_typeerror():
+    from openagents.config.schema import MemoryRef
+
+    ref = MemoryRef(impl="tests.fixtures.custom_plugins.ExplodingKeywordMemory")
+
+    with pytest.raises(PluginLoadError, match="keyword constructor blew up"):
+        load_memory_plugin(ref)
+
+
+def test_load_tool_plugin_validates_capability_before_instantiation():
+    from openagents.config.schema import ToolRef
+
+    ref = ToolRef(id="bad_tool", impl="tests.fixtures.custom_plugins.NoInvokeTool")
+
+    with pytest.raises(CapabilityError, match="invoke"):
+        load_tool_plugin(ref)
+
+
 def test_plugin_registry():
     """Test plugin registry access."""
     from openagents.plugins.registry import get_builtin_plugin_class, list_builtin_plugins
@@ -176,6 +205,23 @@ def test_plugin_registry():
     # Test listing builtin plugins
     plugins = list_builtin_plugins("memory")
     assert "buffer" in plugins
+
+
+def test_duplicate_tool_registration_warns():
+    from openagents.decorators import tool
+
+    class FirstTool:
+        pass
+
+    class SecondTool:
+        pass
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        tool(name="dup_loader_tool")(FirstTool)
+        tool(name="dup_loader_tool")(SecondTool)
+
+    assert any("overridden" in str(item.message).lower() for item in caught)
 
 
 def test_load_memory_plugin_missing_method():

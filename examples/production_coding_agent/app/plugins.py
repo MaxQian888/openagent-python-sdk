@@ -14,7 +14,8 @@ from openagents.interfaces.capabilities import (
 from openagents.interfaces.context import ContextAssemblyResult
 from openagents.interfaces.followup import FollowupResolution, FollowupResolverPlugin
 from openagents.interfaces.memory import MemoryPlugin
-from openagents.interfaces.pattern import ExecutionContext, PatternPlugin
+from openagents.interfaces.pattern import PatternPlugin
+from openagents.interfaces.run_context import RunContext
 from openagents.interfaces.response_repair import (
     ResponseRepairDecision,
     ResponseRepairPolicyPlugin,
@@ -229,11 +230,11 @@ class ProductionCodingPattern(PatternPlugin):
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={PATTERN_EXECUTE, PATTERN_REACT})
-        self.context: ExecutionContext | None = None
+        self.context: RunContext[Any] | None = None
 
     async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any, transcript: list | None = None, session_artifacts: list | None = None, assembly_metadata: dict | None = None, run_request: Any | None = None, tool_executor: Any | None = None, execution_policy: Any | None = None, followup_resolver: Any | None = None, response_repair_policy: Any | None = None, usage: Any | None = None, artifacts: list[Any] | None = None, **kwargs: Any) -> None:
         _ = kwargs
-        self.context = ExecutionContext(
+        self.context = RunContext[Any](
             agent_id=agent_id,
             session_id=session_id,
             input_text=input_text,

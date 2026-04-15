@@ -116,7 +116,7 @@ class Runtime:
 
         return self._session_plugins[session_id][agent_id]
 
-    async def run(self, *, agent_id: str, session_id: str, input_text: str) -> Any:
+    async def run(self, *, agent_id: str, session_id: str, input_text: str, deps: Any = None) -> Any:
         """Execute an agent run and return the legacy final output."""
         result = await self.run_detailed(
             request=RunRequest(
@@ -124,6 +124,7 @@ class Runtime:
                 session_id=session_id,
                 input_text=input_text,
                 budget=self._build_budget(agent_id),
+                deps=deps,
             )
         )
         if result.exception is not None:
@@ -374,6 +375,6 @@ class Runtime:
         if hasattr(self._events, "close"):
             await self._events.close()
 
-    def run_sync(self, *, agent_id: str, session_id: str, input_text: str) -> Any:
+    def run_sync(self, *, agent_id: str, session_id: str, input_text: str, deps: Any = None) -> Any:
         """Synchronous wrapper for run()."""
-        return asyncio.run(self.run(agent_id=agent_id, session_id=session_id, input_text=input_text))
+        return asyncio.run(self.run(agent_id=agent_id, session_id=session_id, input_text=input_text, deps=deps))

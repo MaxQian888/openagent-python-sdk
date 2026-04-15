@@ -9,11 +9,11 @@ from openagents.runtime import sync as sync_module
 class _FakeRuntime:
     def __init__(self, marker: str):
         self.marker = marker
-        self.run_sync_calls: list[tuple[str, str, str]] = []
+        self.run_sync_calls: list[tuple[str, str, str, object | None]] = []
         self.run_detailed_calls: list[RunRequest] = []
 
-    def run_sync(self, *, agent_id: str, session_id: str, input_text: str):
-        self.run_sync_calls.append((agent_id, session_id, input_text))
+    def run_sync(self, *, agent_id: str, session_id: str, input_text: str, deps=None):
+        self.run_sync_calls.append((agent_id, session_id, input_text, deps))
         return f"{self.marker}:{agent_id}:{session_id}:{input_text}"
 
     async def run_detailed(self, *, request: RunRequest) -> RunResult:
@@ -21,21 +21,24 @@ class _FakeRuntime:
         return RunResult(run_id=request.run_id, final_output=f"{self.marker}:{request.input_text}")
 
 
-def test_run_agent_path_variants_delegate_to_runtime(monkeypatch, tmp_path):
+def test_run_agent_path_variants_delegate_to_runtime(monkeypatch):
     fake = _FakeRuntime("path")
     monkeypatch.setattr(sync_module.Runtime, "from_config", classmethod(lambda cls, path: fake))
+    deps = {"token": "abc"}
 
     result = sync_module.run_agent(
-        tmp_path / "agent.json",
+        "agent.json",
         agent_id="assistant",
         session_id="sync-path",
         input_text="hello",
+        deps=deps,
     )
     detailed = sync_module.run_agent_detailed(
-        tmp_path / "agent.json",
+        "agent.json",
         agent_id="assistant",
         session_id="sync-path-detailed",
         input_text="hello",
+        deps=deps,
     )
 
     assert result == "path:assistant:sync-path:hello"
@@ -43,6 +46,8 @@ def test_run_agent_path_variants_delegate_to_runtime(monkeypatch, tmp_path):
     assert detailed.final_output == "path:hello"
     assert len(fake.run_sync_calls) == 1
     assert len(fake.run_detailed_calls) == 1
+    assert fake.run_sync_calls[0][3] is deps
+    assert fake.run_detailed_calls[0].deps is deps
 
 
 def test_run_agent_config_variants_delegate_to_runtime(monkeypatch):
@@ -61,12 +66,14 @@ def test_run_agent_config_variants_delegate_to_runtime(monkeypatch):
         agent_id="assistant",
         session_id="sync-config",
         input_text="hello",
+        deps={"token": "cfg"},
     )
     detailed = sync_module.run_agent_detailed_with_config(
         fake_config,
         agent_id="assistant",
         session_id="sync-detailed",
         input_text="hello",
+        deps={"token": "cfg"},
     )
 
     assert result == "config:assistant:sync-config:hello"
@@ -94,6 +101,7 @@ def test_run_agent_with_dict_uses_runtime_from_dict(monkeypatch):
         agent_id="assistant",
         session_id="sync-dict",
         input_text="hello",
+        deps={"token": "dict"},
     )
 
     assert seen["payload"] is payload

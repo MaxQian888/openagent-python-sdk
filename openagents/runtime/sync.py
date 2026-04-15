@@ -16,6 +16,7 @@ def run_agent(
     agent_id: str,
     session_id: str = "default",
     input_text: str,
+    deps: Any = None,
 ) -> Any:
     """Synchronous agent execution.
 
@@ -35,7 +36,7 @@ def run_agent(
         >>> result = run_agent("agent.json", agent_id="assistant", input_text="hello")
     """
     runtime = Runtime.from_config(config_path)
-    return runtime.run_sync(agent_id=agent_id, session_id=session_id, input_text=input_text)
+    return runtime.run_sync(agent_id=agent_id, session_id=session_id, input_text=input_text, deps=deps)
 
 
 def run_agent_with_config(
@@ -44,6 +45,7 @@ def run_agent_with_config(
     agent_id: str,
     session_id: str = "default",
     input_text: str,
+    deps: Any = None,
 ) -> Any:
     """Synchronous agent execution with pre-loaded config.
 
@@ -57,7 +59,7 @@ def run_agent_with_config(
         Agent execution result
     """
     runtime = Runtime(config, _skip_plugin_load=False)
-    return runtime.run_sync(agent_id=agent_id, session_id=session_id, input_text=input_text)
+    return runtime.run_sync(agent_id=agent_id, session_id=session_id, input_text=input_text, deps=deps)
 
 
 def run_agent_detailed(
@@ -66,6 +68,7 @@ def run_agent_detailed(
     agent_id: str,
     session_id: str = "default",
     input_text: str,
+    deps: Any = None,
 ) -> RunResult:
     """Synchronous agent execution that returns the full RunResult."""
     runtime = Runtime.from_config(config_path)
@@ -75,6 +78,7 @@ def run_agent_detailed(
                 agent_id=agent_id,
                 session_id=session_id,
                 input_text=input_text,
+                deps=deps,
             )
         )
     )
@@ -86,6 +90,7 @@ def run_agent_detailed_with_config(
     agent_id: str,
     session_id: str = "default",
     input_text: str,
+    deps: Any = None,
 ) -> RunResult:
     """Synchronous detailed run with a pre-loaded AppConfig."""
     runtime = Runtime(config, _skip_plugin_load=False)
@@ -95,6 +100,7 @@ def run_agent_detailed_with_config(
                 agent_id=agent_id,
                 session_id=session_id,
                 input_text=input_text,
+                deps=deps,
             )
         )
     )
@@ -106,7 +112,8 @@ def run_agent_with_dict(
     agent_id: str,
     session_id: str = "default",
     input_text: str,
+    deps: Any = None,
 ) -> Any:
     """Synchronous agent execution directly from a Python config dict."""
     runtime = Runtime.from_dict(payload)
-    return runtime.run_sync(agent_id=agent_id, session_id=session_id, input_text=input_text)
+    return runtime.run_sync(agent_id=agent_id, session_id=session_id, input_text=input_text, deps=deps)

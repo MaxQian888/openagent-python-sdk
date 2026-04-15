@@ -37,6 +37,7 @@ from openagents.interfaces.runtime import (
     RUNTIME_RUN,
     RuntimePlugin,
 )
+from openagents.errors.exceptions import OpenAgentsError, PatternError
 from openagents.interfaces.session import SessionArtifact
 from openagents.interfaces.tool import (
     ExecutionPolicy,
@@ -392,9 +393,16 @@ class DefaultRuntime(RuntimePlugin):
                 )
                 return run_result
         except Exception as exc:
+            wrapped_exc = exc
+            if not isinstance(exc, OpenAgentsError):
+                wrapped_exc = PatternError(str(exc)).with_context(
+                    agent_id=request.agent_id,
+                    session_id=request.session_id,
+                    run_id=request.run_id,
+                )
             await self._append_transcript(
                 request=request,
-                final_output=str(exc),
+                final_output=str(wrapped_exc),
                 stop_reason=RUN_STOP_FAILED,
                 is_error=True,
             )
@@ -403,15 +411,15 @@ class DefaultRuntime(RuntimePlugin):
                 agent_id=request.agent_id,
                 session_id=request.session_id,
                 run_id=request.run_id,
-                error=str(exc),
+                error=str(wrapped_exc),
             )
             run_result = RunResult(
                 run_id=request.run_id,
                 stop_reason=RUN_STOP_FAILED,
                 usage=usage,
                 artifacts=list(artifacts),
-                error=str(exc),
-                exception=exc,
+                error=str(wrapped_exc),
+                exception=wrapped_exc,
                 metadata={
                     "agent_id": request.agent_id,
                     "session_id": request.session_id,
@@ -537,6 +545,7 @@ class DefaultRuntime(RuntimePlugin):
         context.session_artifacts = list(session_artifacts)
         context.assembly_metadata = dict(assembly_metadata)
         context.run_request = request
+        context.deps = request.deps
         context.tool_executor = tool_executor
         context.execution_policy = execution_policy
         context.followup_resolver = followup_resolver

@@ -208,3 +208,9 @@ class ToolPlugin(BasePlugin):
     ) -> Any:
         """Fallback handler when invoke fails."""
         raise error
+
+
+if not TYPE_CHECKING:
+    from .run_context import RunContext
+
+    ToolExecutionRequest.model_rebuild()

@@ -71,6 +71,34 @@ class FinalPattern:
         return action.get("content")
 
 
+class DepsEchoPattern:
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
+        self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
+        self.context = None
+
+    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+        from openagents.interfaces.pattern import ExecutionContext
+        self.context = ExecutionContext(
+            agent_id=agent_id,
+            session_id=session_id,
+            run_id="fixture-run",
+            input_text=input_text,
+            state=state,
+            tools=tools,
+            llm_client=llm_client,
+            llm_options=llm_options,
+            event_bus=event_bus,
+        )
+
+    async def react(self) -> dict[str, Any]:
+        return {"type": "final", "content": self.context.deps}
+
+    async def execute(self) -> Any:
+        action = await self.react()
+        return action.get("content")
+
+
 class SlowFinalPattern:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}

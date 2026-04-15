@@ -21,7 +21,7 @@ class RunContext(BaseModel, Generic[DepsT]):
 
     agent_id: str
     session_id: str
-    run_id: str
+    run_id: str = ""
     input_text: str
     deps: DepsT | None = None
     state: dict[str, Any] = Field(default_factory=dict)

@@ -43,6 +43,18 @@ class FailingInjectMemory:
         raise RuntimeError("inject failed")
 
 
+class FailingWritebackMemory:
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
+        self.capabilities = {MEMORY_INJECT, MEMORY_WRITEBACK}
+
+    async def inject(self, context: Any) -> None:
+        context.state["memory_injected"] = True
+
+    async def writeback(self, context: Any) -> None:
+        raise RuntimeError("writeback failed")
+
+
 class FinalPattern:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
@@ -465,6 +477,35 @@ class ToolCallingPattern:
     async def execute(self) -> Any:
         tool = self.context.tools["custom_tool"]
         return await tool.invoke({"value": self.context.input_text}, self.context)
+
+
+class TwoToolCallsPattern:
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
+        self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
+        self.context = None
+
+    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+        from openagents.interfaces.pattern import ExecutionContext
+        self.context = ExecutionContext(
+            agent_id=agent_id,
+            session_id=session_id,
+            input_text=input_text,
+            state=state,
+            tools=tools,
+            llm_client=llm_client,
+            llm_options=llm_options,
+            event_bus=event_bus,
+        )
+
+    async def react(self) -> dict[str, Any]:
+        return {"type": "continue"}
+
+    async def execute(self) -> Any:
+        tool = self.context.tools["custom_tool"]
+        first = await tool.invoke({"value": "one"}, self.context)
+        second = await tool.invoke({"value": "two"}, self.context)
+        return {"first": first, "second": second}
 
 
 class ContextAwarePattern:

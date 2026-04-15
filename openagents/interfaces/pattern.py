@@ -108,8 +108,6 @@ class PatternPlugin(BasePlugin):
         try:
             result = await tool.invoke(params or {}, ctx)
             ctx.tool_results.append({"tool_id": tool_id, "result": result})
-            if ctx.usage is not None:
-                ctx.usage.tool_calls += 1
             await self.emit("tool.succeeded", tool_id=tool_id, result=result)
             return result
         except Exception as exc:

@@ -92,6 +92,33 @@ class RunResult(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class RunStreamChunkKind(str, Enum):
+    RUN_STARTED = "run.started"
+    LLM_DELTA = "llm.delta"
+    LLM_FINISHED = "llm.finished"
+    TOOL_STARTED = "tool.started"
+    TOOL_DELTA = "tool.delta"
+    TOOL_FINISHED = "tool.finished"
+    ARTIFACT = "artifact"
+    VALIDATION_RETRY = "validation.retry"
+    RUN_FINISHED = "run.finished"
+
+
+class RunStreamChunk(BaseModel):
+    """One chunk of a streamed run."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    kind: RunStreamChunkKind
+    run_id: str
+    session_id: str = ""
+    agent_id: str = ""
+    sequence: int = 0
+    timestamp_ms: int = 0
+    payload: dict[str, Any] = Field(default_factory=dict)
+    result: "RunResult | None" = None
+
+
 class RuntimePlugin(BasePlugin):
     """Base runtime plugin.
 

@@ -295,3 +295,17 @@ async def test_llm_base_and_registry_cover_normalization_merge_and_factory_paths
         create_llm_client(LLMOptions(provider="openai_compatible"))
     with pytest.raises(ConfigError):
         create_llm_client(LLMOptions(provider="unsupported"))
+
+
+def test_new_030_exports():
+    from openagents import (
+        ModelRetryError,
+        OutputValidationError,
+        RunStreamChunk,
+        RunStreamChunkKind,
+    )
+
+    assert RunStreamChunk.__name__ == "RunStreamChunk"
+    assert RunStreamChunkKind.RUN_FINISHED.value == "run.finished"
+    assert issubclass(OutputValidationError, Exception)
+    assert issubclass(ModelRetryError, Exception)

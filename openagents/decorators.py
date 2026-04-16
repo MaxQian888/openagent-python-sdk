@@ -32,6 +32,7 @@ Usage:
 from __future__ import annotations
 
 import functools
+import warnings
 from typing import Any, Callable, TypeVar, overload
 
 # Global registries for decorated plugins
@@ -52,6 +53,34 @@ _RESPONSE_REPAIR_POLICY_REGISTRY: dict[str, type] = {}
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+def _register_plugin(
+    *,
+    registry: dict[str, type],
+    kind: str,
+    name: str,
+    plugin: Any,
+) -> None:
+    if name in registry:
+        warnings.warn(
+            f"{kind.title()} '{name}' is being overridden: "
+            f"{registry[name].__name__} -> {plugin.__name__}",
+            stacklevel=3,
+        )
+
+    try:
+        from openagents.plugins.registry import has_builtin_plugin
+    except Exception:  # pragma: no cover - defensive import guard
+        has_builtin_plugin = None
+
+    if callable(has_builtin_plugin) and has_builtin_plugin(kind, name):
+        warnings.warn(
+            f"{kind.title()} '{name}' shadows a builtin plugin of the same name.",
+            stacklevel=3,
+        )
+
+    registry[name] = plugin
+
+
 def tool(name: str | None = None, description: str = ""):
     """Decorator to register a tool function or class.
 
@@ -69,7 +98,7 @@ def tool(name: str | None = None, description: str = ""):
     if callable(name):
         fn_or_cls = name
         tool_name = getattr(fn_or_cls, "__name__", fn_or_cls.__class__.__name__ if not callable(fn_or_cls) else "tool")
-        _TOOL_REGISTRY[tool_name] = fn_or_cls
+        _register_plugin(registry=_TOOL_REGISTRY, kind="tool", name=tool_name, plugin=fn_or_cls)
         if callable(fn_or_cls):
             fn_or_cls._tool_name = tool_name
             fn_or_cls._tool_description = ""
@@ -78,7 +107,7 @@ def tool(name: str | None = None, description: str = ""):
 
     def decorator(fn_or_cls: F) -> F:
         tool_name = name or getattr(fn_or_cls, "__name__", fn_or_cls.__class__.__name__ if not callable(fn_or_cls) else "tool")
-        _TOOL_REGISTRY[tool_name] = fn_or_cls
+        _register_plugin(registry=_TOOL_REGISTRY, kind="tool", name=tool_name, plugin=fn_or_cls)
 
         # Attach metadata
         if callable(fn_or_cls):
@@ -111,14 +140,14 @@ def pattern(name: str | None = None):
     if isinstance(name, type):
         cls = name
         pattern_name = cls.__name__
-        _PATTERN_REGISTRY[pattern_name] = cls
+        _register_plugin(registry=_PATTERN_REGISTRY, kind="pattern", name=pattern_name, plugin=cls)
         cls._pattern_name = pattern_name
         cls._is_pattern = True
         return cls
 
     def decorator(cls: type) -> type:
         pattern_name = name or cls.__name__
-        _PATTERN_REGISTRY[pattern_name] = cls
+        _register_plugin(registry=_PATTERN_REGISTRY, kind="pattern", name=pattern_name, plugin=cls)
 
         cls._pattern_name = pattern_name
         cls._is_pattern = True
@@ -154,14 +183,14 @@ def memory(name: str | None = None):
     if isinstance(name, type):
         cls = name
         memory_name = cls.__name__
-        _MEMORY_REGISTRY[memory_name] = cls
+        _register_plugin(registry=_MEMORY_REGISTRY, kind="memory", name=memory_name, plugin=cls)
         cls._memory_name = memory_name
         cls._is_memory = True
         return cls
 
     def decorator(cls: type) -> type:
         memory_name = name or cls.__name__
-        _MEMORY_REGISTRY[memory_name] = cls
+        _register_plugin(registry=_MEMORY_REGISTRY, kind="memory", name=memory_name, plugin=cls)
 
         cls._memory_name = memory_name
         cls._is_memory = True
@@ -187,14 +216,14 @@ def runtime(name: str | None = None):
     if isinstance(name, type):
         cls = name
         runtime_name = cls.__name__
-        _RUNTIME_REGISTRY[runtime_name] = cls
+        _register_plugin(registry=_RUNTIME_REGISTRY, kind="runtime", name=runtime_name, plugin=cls)
         cls._runtime_name = runtime_name
         cls._is_runtime = True
         return cls
 
     def decorator(cls: type) -> type:
         runtime_name = name or cls.__name__
-        _RUNTIME_REGISTRY[runtime_name] = cls
+        _register_plugin(registry=_RUNTIME_REGISTRY, kind="runtime", name=runtime_name, plugin=cls)
 
         cls._runtime_name = runtime_name
         cls._is_runtime = True
@@ -223,14 +252,14 @@ def session(name: str | None = None):
     if isinstance(name, type):
         cls = name
         session_name = cls.__name__
-        _SESSION_REGISTRY[session_name] = cls
+        _register_plugin(registry=_SESSION_REGISTRY, kind="session", name=session_name, plugin=cls)
         cls._session_name = session_name
         cls._is_session = True
         return cls
 
     def decorator(cls: type) -> type:
         session_name = name or cls.__name__
-        _SESSION_REGISTRY[session_name] = cls
+        _register_plugin(registry=_SESSION_REGISTRY, kind="session", name=session_name, plugin=cls)
 
         cls._session_name = session_name
         cls._is_session = True
@@ -259,14 +288,14 @@ def event_bus(name: str | None = None):
     if isinstance(name, type):
         cls = name
         event_name = cls.__name__
-        _EVENT_REGISTRY[event_name] = cls
+        _register_plugin(registry=_EVENT_REGISTRY, kind="events", name=event_name, plugin=cls)
         cls._event_name = event_name
         cls._is_event_bus = True
         return cls
 
     def decorator(cls: type) -> type:
         event_name = name or cls.__name__
-        _EVENT_REGISTRY[event_name] = cls
+        _register_plugin(registry=_EVENT_REGISTRY, kind="events", name=event_name, plugin=cls)
 
         cls._event_name = event_name
         cls._is_event_bus = True
@@ -279,14 +308,14 @@ def tool_executor(name: str | None = None):
     if isinstance(name, type):
         cls = name
         executor_name = cls.__name__
-        _TOOL_EXECUTOR_REGISTRY[executor_name] = cls
+        _register_plugin(registry=_TOOL_EXECUTOR_REGISTRY, kind="tool_executor", name=executor_name, plugin=cls)
         cls._tool_executor_name = executor_name
         cls._is_tool_executor = True
         return cls
 
     def decorator(cls: type) -> type:
         executor_name = name or cls.__name__
-        _TOOL_EXECUTOR_REGISTRY[executor_name] = cls
+        _register_plugin(registry=_TOOL_EXECUTOR_REGISTRY, kind="tool_executor", name=executor_name, plugin=cls)
         cls._tool_executor_name = executor_name
         cls._is_tool_executor = True
         return cls
@@ -299,14 +328,14 @@ def execution_policy(name: str | None = None):
     if isinstance(name, type):
         cls = name
         policy_name = cls.__name__
-        _EXECUTION_POLICY_REGISTRY[policy_name] = cls
+        _register_plugin(registry=_EXECUTION_POLICY_REGISTRY, kind="execution_policy", name=policy_name, plugin=cls)
         cls._execution_policy_name = policy_name
         cls._is_execution_policy = True
         return cls
 
     def decorator(cls: type) -> type:
         policy_name = name or cls.__name__
-        _EXECUTION_POLICY_REGISTRY[policy_name] = cls
+        _register_plugin(registry=_EXECUTION_POLICY_REGISTRY, kind="execution_policy", name=policy_name, plugin=cls)
         cls._execution_policy_name = policy_name
         cls._is_execution_policy = True
         return cls
@@ -319,14 +348,14 @@ def context_assembler(name: str | None = None):
     if isinstance(name, type):
         cls = name
         assembler_name = cls.__name__
-        _CONTEXT_ASSEMBLER_REGISTRY[assembler_name] = cls
+        _register_plugin(registry=_CONTEXT_ASSEMBLER_REGISTRY, kind="context_assembler", name=assembler_name, plugin=cls)
         cls._context_assembler_name = assembler_name
         cls._is_context_assembler = True
         return cls
 
     def decorator(cls: type) -> type:
         assembler_name = name or cls.__name__
-        _CONTEXT_ASSEMBLER_REGISTRY[assembler_name] = cls
+        _register_plugin(registry=_CONTEXT_ASSEMBLER_REGISTRY, kind="context_assembler", name=assembler_name, plugin=cls)
         cls._context_assembler_name = assembler_name
         cls._is_context_assembler = True
         return cls
@@ -339,14 +368,14 @@ def followup_resolver(name: str | None = None):
     if isinstance(name, type):
         cls = name
         resolver_name = cls.__name__
-        _FOLLOWUP_RESOLVER_REGISTRY[resolver_name] = cls
+        _register_plugin(registry=_FOLLOWUP_RESOLVER_REGISTRY, kind="followup_resolver", name=resolver_name, plugin=cls)
         cls._followup_resolver_name = resolver_name
         cls._is_followup_resolver = True
         return cls
 
     def decorator(cls: type) -> type:
         resolver_name = name or cls.__name__
-        _FOLLOWUP_RESOLVER_REGISTRY[resolver_name] = cls
+        _register_plugin(registry=_FOLLOWUP_RESOLVER_REGISTRY, kind="followup_resolver", name=resolver_name, plugin=cls)
         cls._followup_resolver_name = resolver_name
         cls._is_followup_resolver = True
         return cls
@@ -359,14 +388,14 @@ def response_repair_policy(name: str | None = None):
     if isinstance(name, type):
         cls = name
         policy_name = cls.__name__
-        _RESPONSE_REPAIR_POLICY_REGISTRY[policy_name] = cls
+        _register_plugin(registry=_RESPONSE_REPAIR_POLICY_REGISTRY, kind="response_repair_policy", name=policy_name, plugin=cls)
         cls._response_repair_policy_name = policy_name
         cls._is_response_repair_policy = True
         return cls
 
     def decorator(cls: type) -> type:
         policy_name = name or cls.__name__
-        _RESPONSE_REPAIR_POLICY_REGISTRY[policy_name] = cls
+        _register_plugin(registry=_RESPONSE_REPAIR_POLICY_REGISTRY, kind="response_repair_policy", name=policy_name, plugin=cls)
         cls._response_repair_policy_name = policy_name
         cls._is_response_repair_policy = True
         return cls

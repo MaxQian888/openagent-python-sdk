@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from openagents.errors.exceptions import ToolError, ToolTimeoutError
 from openagents.interfaces.tool import ToolExecutionRequest, ToolExecutionSpec
 from openagents.plugins.builtin.tool.common import BuiltinSearchTool
 from openagents.plugins.builtin.tool.datetime_tools import CurrentTimeTool, DateDiffTool, DateParseTool
@@ -326,8 +327,11 @@ async def test_safe_tool_executor_handles_validation_success_timeout_exception_a
     chunks = [chunk async for chunk in executor.execute_stream(request)]
 
     assert invalid.success is False and "bad params" in (invalid.error or "")
+    assert isinstance(invalid.exception, ToolError)
     assert success.success is True and success.data["params"] == {"value": 1}
     assert success.metadata == {"timeout_ms": 50}
     assert timeout.success is False and "timed out" in (timeout.error or "")
+    assert isinstance(timeout.exception, ToolTimeoutError)
     assert error.success is False and "boom" in (error.error or "")
+    assert isinstance(error.exception, ToolError)
     assert chunks == [{"type": "result", "data": {"params": {"value": 1}, "context": {"ctx": True}}, "error": None}]

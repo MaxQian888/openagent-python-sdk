@@ -183,6 +183,11 @@ def get_builtin_plugin_class(kind: str, name: str) -> type[Any] | None:
     return decorator_reg.get(name)
 
 
+def has_builtin_plugin(kind: str, name: str) -> bool:
+    """Check whether a builtin plugin name already exists for the kind."""
+    return name in _BUILTIN_REGISTRY.get(kind, {})
+
+
 def list_builtin_plugins(kind: str) -> list[str]:
     """List all available plugins for a given kind.
 

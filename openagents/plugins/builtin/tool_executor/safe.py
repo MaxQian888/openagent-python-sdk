@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from openagents.errors.exceptions import ToolError, ToolTimeoutError
 from openagents.interfaces.tool import ToolExecutionRequest, ToolExecutionResult, ToolExecutorPlugin
 
 
@@ -21,7 +22,7 @@ class SafeToolExecutor(ToolExecutorPlugin):
         if callable(validator):
             is_valid, error = validator(request.params or {})
             if not is_valid:
-                exc = ValueError(error or f"Invalid params for tool '{request.tool_id}'")
+                exc = ToolError(error or f"Invalid params for tool '{request.tool_id}'", tool_name=request.tool_id)
                 return ToolExecutionResult(
                     tool_id=request.tool_id,
                     success=False,
@@ -41,8 +42,9 @@ class SafeToolExecutor(ToolExecutorPlugin):
                 metadata={"timeout_ms": timeout_ms},
             )
         except asyncio.TimeoutError as exc:
-            timeout_exc = TimeoutError(
-                f"Tool '{request.tool_id}' timed out after {timeout_ms}ms"
+            timeout_exc = ToolTimeoutError(
+                f"Tool '{request.tool_id}' timed out after {timeout_ms}ms",
+                tool_name=request.tool_id,
             )
             return ToolExecutionResult(
                 tool_id=request.tool_id,
@@ -52,11 +54,12 @@ class SafeToolExecutor(ToolExecutorPlugin):
                 metadata={"timeout_ms": timeout_ms},
             )
         except Exception as exc:
+            wrapped_exc = exc if isinstance(exc, ToolError) else ToolError(str(exc), tool_name=request.tool_id)
             return ToolExecutionResult(
                 tool_id=request.tool_id,
                 success=False,
-                error=str(exc),
-                exception=exc,
+                error=str(wrapped_exc),
+                exception=wrapped_exc,
                 metadata={"timeout_ms": timeout_ms},
             )
 

@@ -42,7 +42,7 @@ OpenAgents 是一个 **single-agent runtime kernel**。
 - `RunResult`
 - `RunUsage`
 - `RunArtifact`
-- `ExecutionContext`
+- `RunContext`
 - `ToolExecutionRequest`
 - `ToolExecutionResult`
 - `ContextAssemblyResult`
@@ -99,7 +99,7 @@ builtin runtime 的执行顺序可以概括为：
 6. `context_assembler.assemble()` 组装 transcript / artifacts / metadata
 7. runtime budget 注入 pattern
 8. 用 `execution_policy + tool_executor` 重新绑定 tools
-9. `pattern.setup()` 构建 `ExecutionContext`
+9. `pattern.setup()` 构建 `RunContext`
 10. `memory.inject()`
 11. `pattern.execute()`
 12. `memory.writeback()`
@@ -145,7 +145,7 @@ builtin runtime 的执行顺序可以概括为：
 
 如果主要是给系统或观测链路看的，用 `metadata`。
 
-### `ExecutionContext.state`
+### `RunContext.state`
 
 适合跨 step、跨 turn 保留的 durable state。
 
@@ -157,7 +157,7 @@ builtin runtime 的执行顺序可以概括为：
 - memory 持久状态
 - last successful delivery
 
-### `ExecutionContext.scratch`
+### `RunContext.scratch`
 
 适合单轮 run 内的临时状态。
 
@@ -170,7 +170,7 @@ builtin runtime 的执行顺序可以概括为：
 
 如果这个东西当前 run 结束后丢掉也没关系，就放 `scratch`。
 
-### `ExecutionContext.assembly_metadata`
+### `RunContext.assembly_metadata`
 
 适合由 `context_assembler` 产出、再被 pattern / skill / tool 消费的协议。
 

@@ -1,9 +1,11 @@
 import asyncio
 import time
+from pathlib import Path
 
 import pytest
 
 from openagents.config.loader import load_config_dict
+from openagents.errors.exceptions import PatternError
 from openagents.interfaces.runtime import RunRequest
 from openagents.interfaces.session import SessionArtifact
 from openagents.runtime.runtime import Runtime
@@ -53,6 +55,26 @@ async def test_runtime_inject_react_writeback_flow():
 
 
 @pytest.mark.asyncio
+async def test_runtime_threads_deps_into_pattern_context():
+    payload = _payload(
+        "tests.fixtures.runtime_plugins.InjectWritebackMemory",
+        "tests.fixtures.runtime_plugins.DepsEchoPattern",
+    )
+    config = load_config_dict(payload)
+    runtime = Runtime(config)
+    deps = {"token": "abc"}
+
+    result = await runtime.run(
+        agent_id="assistant",
+        session_id="deps-session",
+        input_text="hello",
+        deps=deps,
+    )
+
+    assert result == deps
+
+
+@pytest.mark.asyncio
 async def test_runtime_memory_error_continue():
     config = load_config_dict(
         _payload(
@@ -84,7 +106,7 @@ async def test_runtime_memory_error_fail():
     )
     runtime = Runtime(config)
 
-    with pytest.raises(RuntimeError, match="inject failed"):
+    with pytest.raises(PatternError, match="inject failed"):
         await runtime.run(agent_id="assistant", session_id="s1", input_text="hello")
 
 
@@ -206,11 +228,12 @@ async def test_runtime_uses_builtin_safe_tool_executor_timeout():
 
 
 @pytest.mark.asyncio
-async def test_runtime_uses_builtin_filesystem_execution_policy(tmp_path):
-    allowed_dir = tmp_path / "allowed"
-    blocked_dir = tmp_path / "blocked"
-    allowed_dir.mkdir()
-    blocked_dir.mkdir()
+async def test_runtime_uses_builtin_filesystem_execution_policy():
+    root = Path(".tmp/runtime-filesystem-policy")
+    allowed_dir = root / "allowed"
+    blocked_dir = root / "blocked"
+    allowed_dir.mkdir(parents=True, exist_ok=True)
+    blocked_dir.mkdir(parents=True, exist_ok=True)
     allowed_file = allowed_dir / "allowed.txt"
     blocked_file = blocked_dir / "blocked.txt"
     allowed_file.write_text("ok", encoding="utf-8")

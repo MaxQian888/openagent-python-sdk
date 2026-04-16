@@ -38,7 +38,7 @@ SDK Runtime Seams
             |
             v
 Kernel Protocols
-    RunRequest, RunResult, ExecutionContext,
+    RunRequest, RunResult, RunContext,
     ToolExecutionRequest, ToolExecutionResult, SessionArtifact
 ```
 
@@ -54,7 +54,7 @@ That separation gives you:
 - a **single-agent runtime kernel**
 - a **plugin-based execution model** for memory, pattern, tool, session, runtime, events, and top-level skills
 - a **middle-protocol host** for execution policy, tool execution, context assembly, follow-up resolution, and response repair
-- a **structured runtime contract** built around `RunRequest`, `RunResult`, `RunUsage`, `RunArtifact`, and `ExecutionContext`
+- a **structured runtime contract** built around `RunRequest`, `RunResult`, `RunUsage`, `RunArtifact`, and `RunContext`
 
 ## What It Is Not
 
@@ -82,7 +82,7 @@ These are the stable runtime objects that define what the system moves around:
 - `RunResult`
 - `RunUsage`
 - `RunArtifact`
-- `ExecutionContext`
+- `RunContext`
 - `ToolExecutionRequest`
 - `ToolExecutionResult`
 - `ContextAssemblyResult`
@@ -127,9 +127,9 @@ OpenAgents does not try to predefine all of these. Instead, it gives you carrier
 
 - `RunRequest.context_hints`
 - `RunRequest.metadata`
-- `ExecutionContext.state`
-- `ExecutionContext.scratch`
-- `ExecutionContext.assembly_metadata`
+- `RunContext.state`
+- `RunContext.scratch`
+- `RunContext.assembly_metadata`
 - `RunArtifact.metadata`
 
 ## Runtime Architecture
@@ -153,7 +153,7 @@ At the code level:
 
 - `Runtime` is the public facade
 - `DefaultRuntime` is the builtin orchestrator
-- `ExecutionContext` is the per-run state carrier
+- `RunContext` is the per-run state carrier for tools and patterns
 - plugins are loaded from builtin registry, decorator registry, or `impl` paths
 
 ## Quick Start

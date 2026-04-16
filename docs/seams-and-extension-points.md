@@ -17,7 +17,7 @@ kernel 会变糊，产品功能也会误伤 SDK 边界。
 
 - `RunRequest`
 - `RunResult`
-- `ExecutionContext`
+- `RunContext`
 - `ToolExecutionRequest`
 - `ContextAssemblyResult`
 
@@ -180,9 +180,9 @@ App infrastructure seam：
 
 - `RunRequest.context_hints`
 - `RunRequest.metadata`
-- `ExecutionContext.state`
-- `ExecutionContext.scratch`
-- `ExecutionContext.assembly_metadata`
+- `RunContext.state`
+- `RunContext.scratch`
+- `RunContext.assembly_metadata`
 - `RunArtifact.metadata`
 
 这就是很多 middle protocol 的正确落点。

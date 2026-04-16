@@ -3,6 +3,7 @@
 import pytest
 
 from openagents.config.schema import LLMOptions
+from openagents.errors.exceptions import ConfigValidationError
 from openagents.llm.registry import create_llm_client
 from openagents.llm.providers.mock import MockLLMClient
 
@@ -26,10 +27,8 @@ def test_create_llm_client_with_model():
 
 def test_create_llm_client_unknown():
     """Test creating client with unknown provider raises error."""
-    config = LLMOptions(provider="unknown_provider")
-
-    with pytest.raises(Exception):  # ConfigError
-        create_llm_client(config)
+    with pytest.raises(ConfigValidationError):
+        LLMOptions(provider="unknown_provider")
 
 
 @pytest.mark.asyncio

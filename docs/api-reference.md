@@ -250,6 +250,7 @@ run 的 usage 聚合：
 - `metadata`
 - `context_hints`
 - `budget`
+- `deps`
 
 ### `RunResult`
 
@@ -264,15 +265,28 @@ run 的 usage 聚合：
 - `exception`
 - `metadata`
 
-## 6. ExecutionContext
+### `StopReason`
 
-`ExecutionContext` 是 pattern 和 tool 真正消费的运行态对象。
+取值：
+
+- `completed`
+- `failed`
+- `cancelled`
+- `timeout`
+- `max_steps`
+- `budget_exhausted`
+
+## 6. RunContext
+
+`RunContext` 是 pattern 和 tool 真正消费的运行态对象。
 
 主要字段：
 
 - `agent_id`
 - `session_id`
+- `run_id`
 - `input_text`
+- `deps`
 - `state`
 - `tools`
 - `llm_client`

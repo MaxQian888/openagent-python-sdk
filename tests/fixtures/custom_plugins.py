@@ -5,6 +5,7 @@ from typing import Any
 
 from openagents.interfaces.context import ContextAssemblyResult
 from openagents.interfaces.followup import FollowupResolution
+from openagents.interfaces.run_context import RunContext
 from openagents.interfaces.response_repair import ResponseRepairDecision
 from openagents.interfaces.capabilities import (
     MEMORY_INJECT,
@@ -35,8 +36,7 @@ class CustomPattern:
 
     async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
         """Setup pattern with runtime data."""
-        from openagents.interfaces.pattern import ExecutionContext
-        self.context = ExecutionContext(
+        self.context = RunContext[Any](
             agent_id=agent_id,
             session_id=session_id,
             input_text=input_text,
@@ -73,6 +73,29 @@ class SlowTool:
     async def invoke(self, params: dict[str, Any], context: Any) -> Any:
         await asyncio.sleep(self._delay)
         return {"ok": True, "params": params}
+
+
+class LegacyPositionalMemory:
+    def __init__(self, config: dict[str, Any] | None = None, /):
+        self.config = config or {}
+        self.capabilities = {MEMORY_INJECT}
+
+    async def inject(self, context: Any) -> None:
+        return None
+
+
+class ExplodingKeywordMemory:
+    def __init__(self, *, config: dict[str, Any] | None = None):
+        _ = config
+        raise TypeError("keyword constructor blew up")
+
+
+class NoInvokeTool:
+    capabilities = {TOOL_INVOKE}
+
+    def __init__(self, *, config: dict[str, Any] | None = None):
+        _ = config
+        raise RuntimeError("constructor should not run")
 
 
 class BadPatternNoCapability:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from openagents.interfaces.capabilities import (
@@ -31,11 +33,19 @@ from openagents.interfaces.response_repair import ResponseRepairPolicyPlugin
 from openagents.interfaces.runtime import (
     RUN_STOP_COMPLETED,
     RUN_STOP_FAILED,
+    RUN_STOP_TIMEOUT,
     RunRequest,
     RunResult,
     RunUsage,
+    StopReason,
     RUNTIME_RUN,
     RuntimePlugin,
+)
+from openagents.errors.exceptions import (
+    BudgetExhausted,
+    MaxStepsExceeded,
+    OpenAgentsError,
+    PatternError,
 )
 from openagents.interfaces.session import SessionArtifact
 from openagents.interfaces.tool import (
@@ -48,6 +58,8 @@ from openagents.interfaces.tool import (
     ToolExecutor,
     ToolExecutorPlugin,
 )
+
+logger = logging.getLogger("openagents")
 
 
 def _supports_parameter(fn: Any, name: str) -> bool:
@@ -75,16 +87,12 @@ def _import_symbol(path: str) -> Any:
 def _instantiate(factory: Any, config: dict[str, Any]) -> Any:
     if not callable(factory):
         return factory
-    for call in (
-        lambda: factory(config=config),
-        lambda: factory(config),
-        lambda: factory(),
-    ):
-        try:
-            return call()
-        except TypeError:
-            continue
-    raise TypeError(f"Could not instantiate runtime dependency from {factory!r}")
+    try:
+        return factory(config=config)
+    except TypeError as exc:
+        raise TypeError(
+            f"Could not instantiate runtime dependency from {factory!r}: {exc}"
+        ) from exc
 
 
 class _AllowAllExecutionPolicy(ExecutionPolicyPlugin):
@@ -169,6 +177,18 @@ class _BoundTool:
         return ToolExecutionSpec()
 
     async def invoke(self, params: dict[str, Any], context: Any) -> Any:
+        budget = getattr(getattr(context, "run_request", None), "budget", None)
+        usage = getattr(context, "usage", None)
+        if budget is not None and budget.max_tool_calls is not None and usage is not None:
+            if usage.tool_calls >= budget.max_tool_calls:
+                raise MaxStepsExceeded(
+                    f"Tool call limit ({budget.max_tool_calls}) exceeded"
+                ).with_context(
+                    agent_id=getattr(context, "agent_id", None),
+                    session_id=getattr(context, "session_id", None),
+                    run_id=getattr(getattr(context, "run_request", None), "run_id", None),
+                    tool_id=self._tool_id,
+                )
         request = ToolExecutionRequest(
             tool_id=self._tool_id,
             tool=self._tool,
@@ -185,6 +205,9 @@ class _BoundTool:
             request
         )
         if result.success:
+            usage = getattr(context, "usage", None)
+            if usage is not None:
+                usage.tool_calls += 1
             return result.data
         if result.exception is not None:
             raise result.exception
@@ -308,6 +331,7 @@ class DefaultRuntime(RuntimePlugin):
         context_assembler = self._resolve_context_assembler(agent_plugins)
         followup_resolver = self._resolve_followup_resolver(agent_plugins)
         response_repair_policy = self._resolve_response_repair_policy(agent_plugins)
+        started_at = time.perf_counter()
 
         try:
             async with self._session_manager.session(request.session_id) as session_state:
@@ -352,9 +376,13 @@ class DefaultRuntime(RuntimePlugin):
                     run_id=request.run_id,
                 )
 
+                self._enforce_duration_budget(request=request, started_at=started_at)
                 await self._run_memory_inject(agent=agent, memory=plugins.memory, pattern=plugins.pattern)
+                self._enforce_duration_budget(request=request, started_at=started_at)
                 result = await plugins.pattern.execute()
+                self._enforce_duration_budget(request=request, started_at=started_at)
                 await self._run_memory_writeback(agent=agent, memory=plugins.memory, pattern=plugins.pattern)
+                self._enforce_duration_budget(request=request, started_at=started_at)
                 session_state["_runtime_last_output"] = result
                 await self._append_transcript(
                     request=request,
@@ -392,10 +420,24 @@ class DefaultRuntime(RuntimePlugin):
                 )
                 return run_result
         except Exception as exc:
+            wrapped_exc = exc
+            if not isinstance(exc, OpenAgentsError):
+                wrapped_exc = PatternError(str(exc)).with_context(
+                    agent_id=request.agent_id,
+                    session_id=request.session_id,
+                    run_id=request.run_id,
+                )
+            stop_reason = RUN_STOP_FAILED
+            if isinstance(wrapped_exc, MaxStepsExceeded):
+                stop_reason = StopReason.MAX_STEPS.value
+            elif isinstance(wrapped_exc, BudgetExhausted):
+                stop_reason = StopReason.BUDGET_EXHAUSTED.value
+            elif isinstance(exc, TimeoutError):
+                stop_reason = RUN_STOP_TIMEOUT
             await self._append_transcript(
                 request=request,
-                final_output=str(exc),
-                stop_reason=RUN_STOP_FAILED,
+                final_output=str(wrapped_exc),
+                stop_reason=stop_reason,
                 is_error=True,
             )
             await self._event_bus.emit(
@@ -403,15 +445,15 @@ class DefaultRuntime(RuntimePlugin):
                 agent_id=request.agent_id,
                 session_id=request.session_id,
                 run_id=request.run_id,
-                error=str(exc),
+                error=str(wrapped_exc),
             )
             run_result = RunResult(
                 run_id=request.run_id,
-                stop_reason=RUN_STOP_FAILED,
+                stop_reason=stop_reason,
                 usage=usage,
                 artifacts=list(artifacts),
-                error=str(exc),
-                exception=exc,
+                error=str(wrapped_exc),
+                exception=wrapped_exc,
                 metadata={
                     "agent_id": request.agent_id,
                     "session_id": request.session_id,
@@ -479,6 +521,20 @@ class DefaultRuntime(RuntimePlugin):
             for tool_id, tool in tools.items()
         }
 
+    def _enforce_duration_budget(self, *, request: RunRequest, started_at: float) -> None:
+        budget = request.budget
+        if budget is None or budget.max_duration_ms is None:
+            return
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        if elapsed_ms > budget.max_duration_ms:
+            raise BudgetExhausted(
+                f"Run duration limit ({budget.max_duration_ms}ms) exceeded"
+            ).with_context(
+                agent_id=request.agent_id,
+                session_id=request.session_id,
+                run_id=request.run_id,
+            )
+
     async def _setup_pattern(
         self,
         *,
@@ -537,6 +593,7 @@ class DefaultRuntime(RuntimePlugin):
         context.session_artifacts = list(session_artifacts)
         context.assembly_metadata = dict(assembly_metadata)
         context.run_request = request
+        context.deps = request.deps
         context.tool_executor = tool_executor
         context.execution_policy = execution_policy
         context.followup_resolver = followup_resolver
@@ -783,6 +840,18 @@ class DefaultRuntime(RuntimePlugin):
                 session_id=context.session_id,
                 error=str(exc),
             )
+            logger.warning(
+                "Memory %s failed during inject (on_error=%s): %s",
+                type(memory).__name__,
+                agent.memory.on_error,
+                exc,
+                exc_info=True,
+                extra={
+                    "agent_id": context.agent_id,
+                    "session_id": context.session_id,
+                    "run_id": getattr(getattr(context, "run_request", None), "run_id", None),
+                },
+            )
             if agent.memory.on_error == "fail":
                 raise
 
@@ -809,6 +878,18 @@ class DefaultRuntime(RuntimePlugin):
                 agent_id=context.agent_id,
                 session_id=context.session_id,
                 error=str(exc),
+            )
+            logger.warning(
+                "Memory %s failed during writeback (on_error=%s): %s",
+                type(memory).__name__,
+                agent.memory.on_error,
+                exc,
+                exc_info=True,
+                extra={
+                    "agent_id": context.agent_id,
+                    "session_id": context.session_id,
+                    "run_id": getattr(getattr(context, "run_request", None), "run_id", None),
+                },
             )
             if agent.memory.on_error == "fail":
                 raise

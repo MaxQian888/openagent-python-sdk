@@ -118,6 +118,9 @@ class DecoratorResponseRepairPolicy:
 
 @tool_executor(name="decorated_tool_executor")
 class DecoratorToolExecutor:
+    def __init__(self, *, config: dict[str, Any] | None = None):
+        self.config = config or {}
+
     async def execute(self, request):
         data = await request.tool.invoke(request.params or {}, request.context)
         return type(
@@ -139,12 +142,18 @@ class DecoratorToolExecutor:
 
 @execution_policy(name="decorated_execution_policy")
 class DecoratorExecutionPolicy:
+    def __init__(self, *, config: dict[str, Any] | None = None):
+        self.config = config or {}
+
     async def evaluate(self, request):
         return type("Decision", (), {"allowed": True, "reason": "", "metadata": {"decorated": True}})()
 
 
 @context_assembler(name="decorated_context_assembler")
 class DecoratorContextAssembler:
+    def __init__(self, *, config: dict[str, Any] | None = None):
+        self.config = config or {}
+
     async def assemble(self, *, request, session_state, session_manager):
         _ = (request, session_state, session_manager)
         return ContextAssemblyResult(metadata={"decorated": True})

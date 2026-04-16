@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from openagents.config.loader import load_config_dict
+from openagents.errors.exceptions import PatternError
 from openagents.runtime.runtime import Runtime
 
 
@@ -43,7 +44,7 @@ async def test_rejects_non_dict_action():
             _payload(pattern_impl="tests.fixtures.runtime_plugins.NonDictActionPattern")
         )
     )
-    with pytest.raises(TypeError, match="Pattern action must be dict"):
+    with pytest.raises(PatternError, match="Pattern action must be dict"):
         await runtime.run(agent_id="assistant", session_id="s1", input_text="x")
     assert any(evt.name == "run.failed" for evt in runtime.event_bus.history)
 
@@ -55,7 +56,7 @@ async def test_rejects_unknown_action_type():
             _payload(pattern_impl="tests.fixtures.runtime_plugins.UnknownTypePattern")
         )
     )
-    with pytest.raises(ValueError, match="Unsupported pattern action type"):
+    with pytest.raises(PatternError, match="Unsupported pattern action type"):
         await runtime.run(agent_id="assistant", session_id="s1", input_text="x")
 
 
@@ -69,7 +70,7 @@ async def test_rejects_tool_call_without_tool_id():
             )
         )
     )
-    with pytest.raises(ValueError, match="must include non-empty 'tool' or 'tool_id'"):
+    with pytest.raises(PatternError, match="must include non-empty 'tool' or 'tool_id'"):
         await runtime.run(agent_id="assistant", session_id="s1", input_text="x")
 
 
@@ -83,7 +84,7 @@ async def test_rejects_tool_call_with_non_object_params():
             )
         )
     )
-    with pytest.raises(ValueError, match="params' must be an object"):
+    with pytest.raises(PatternError, match="params' must be an object"):
         await runtime.run(agent_id="assistant", session_id="s1", input_text="x")
 
 
@@ -98,7 +99,7 @@ async def test_step_timeout_is_enforced():
             )
         )
     )
-    with pytest.raises(TimeoutError, match=r"Pattern step timed out after 10ms at step 0"):
+    with pytest.raises(PatternError, match=r"Pattern step timed out after 10ms at step 0"):
         await runtime.run(agent_id="assistant", session_id="s1", input_text="x")
 
 
@@ -112,7 +113,7 @@ async def test_max_steps_is_enforced():
             )
         )
     )
-    with pytest.raises(RuntimeError, match=r"Pattern exceeded max_steps \(2\)"):
+    with pytest.raises(PatternError, match=r"Pattern exceeded max_steps \(2\)"):
         await runtime.run(agent_id="assistant", session_id="s1", input_text="x")
 
 
@@ -126,7 +127,7 @@ async def test_session_lock_releases_after_failure():
         )
     )
 
-    with pytest.raises(RuntimeError, match="pattern fail once"):
+    with pytest.raises(PatternError, match="pattern fail once"):
         await runtime.run(agent_id="assistant", session_id="same", input_text="x")
 
     result = await runtime.run(agent_id="assistant", session_id="same", input_text="x")

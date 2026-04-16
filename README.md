@@ -6,6 +6,12 @@ OpenAgents is a config-as-code, async-first SDK for teams that want a clear
 single-agent runtime, a small set of strong extension seams, and enough room to
 invent product-specific middle protocols above the kernel.
 
+Key public contracts in `0.2.0`:
+
+- `RunContext[DepsT]` for typed local dependency injection
+- `RunRequest` / `RunResult` as structured runtime IO
+- `StopReason` for typed run termination state
+
 ## Start Here
 
 - [English README](README_EN.md)

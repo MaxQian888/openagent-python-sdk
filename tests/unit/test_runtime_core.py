@@ -238,6 +238,33 @@ async def test_runtime_run_with_asyncio():
 
 
 @pytest.mark.asyncio
+async def test_runtime_run_builds_request_with_deps(monkeypatch):
+    """Test runtime facade threads deps into RunRequest."""
+    config = load_config_dict(_minimal_config())
+    runtime = Runtime(config, _skip_plugin_load=True)
+    captured: dict[str, RunRequest] = {}
+    deps = {"token": "abc"}
+
+    async def _fake_run_detailed(*, request: RunRequest):
+        captured["request"] = request
+        from openagents.interfaces.runtime import RunResult
+
+        return RunResult(run_id=request.run_id, final_output=request.deps)
+
+    monkeypatch.setattr(runtime, "run_detailed", _fake_run_detailed)
+
+    result = await runtime.run(
+        agent_id="test_agent",
+        session_id="s1",
+        input_text="hello",
+        deps=deps,
+    )
+
+    assert result is deps
+    assert captured["request"].deps is deps
+
+
+@pytest.mark.asyncio
 async def test_runtime_properties():
     """Test runtime properties."""
     config = load_config_dict(_minimal_config())

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Awaitable, Callable
 
 from openagents.interfaces.events import (
@@ -11,6 +12,8 @@ from openagents.interfaces.events import (
     EventBusPlugin,
     RuntimeEvent,
 )
+
+logger = logging.getLogger("openagents")
 
 
 class AsyncEventBus(EventBusPlugin):
@@ -51,9 +54,12 @@ class AsyncEventBus(EventBusPlugin):
         handlers.extend(self._subscribers.get(event_name, []))
         handlers.extend(self._subscribers.get("*", []))  # Wildcard handlers
         for handler in handlers:
-            result = handler(event)
-            if hasattr(result, "__await__"):
-                await result
+            try:
+                result = handler(event)
+                if hasattr(result, "__await__"):
+                    await result
+            except Exception as exc:
+                logger.error("Event handler failed for %s: %s", event_name, exc, exc_info=True)
 
         return event
 

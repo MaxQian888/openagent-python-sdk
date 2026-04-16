@@ -164,6 +164,7 @@ agent 级 selector 至少要提供一个 `type` 或 `impl`。
   "tools": [],
   "runtime": {
     "max_steps": 16,
+    "max_tool_calls": 32,
     "step_timeout_ms": 30000,
     "session_queue_size": 1000,
     "event_queue_size": 2000
@@ -204,6 +205,7 @@ agent 级 selector 至少要提供一个 `type` 或 `impl`。
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `max_steps` | int | `16` | 逻辑 step 上限 |
+| `max_tool_calls` | int | `null` | tool 调用上限 |
 | `step_timeout_ms` | int | `30000` | 单 step timeout |
 | `session_queue_size` | int | `1000` | 目前主要是 schema 级字段 |
 | `event_queue_size` | int | `2000` | 目前主要是 schema 级字段 |
@@ -211,7 +213,7 @@ agent 级 selector 至少要提供一个 `type` 或 `impl`。
 注意：
 
 - 这些字段都必须是正整数
-- builtin `DefaultRuntime` 当前直接消费的是 `max_steps` 和 `step_timeout_ms`
+- builtin `DefaultRuntime` 当前直接消费 `max_steps`、`max_tool_calls`、以及 `step_timeout_ms` / `max_duration_ms` 这类 budget
 - `session_queue_size`、`event_queue_size` 当前会被校验，但 builtin runtime 不直接消费
 
 ## 6. Memory

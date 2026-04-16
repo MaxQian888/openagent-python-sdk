@@ -2,44 +2,29 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol, runtime_checkable
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from openagents.errors.exceptions import (
+    OpenAgentsError,
+    PermanentToolError,
+    RetryableToolError,
+    ToolError,
+    ToolNotFoundError,
+    ToolTimeoutError,
+)
 
 from .plugin import BasePlugin
 
-
-# Tool Error Types
-class ToolError(Exception):
-    """Base exception for tool errors."""
-
-    tool_name: str = ""
-
-    def __init__(self, message: str, tool_name: str = ""):
-        super().__init__(message)
-        self.tool_name = tool_name
+if TYPE_CHECKING:
+    from .run_context import RunContext
 
 
-class RetryableToolError(ToolError):
-    """Tool error that can be retried.
-
-    Examples: timeout, rate limit, temporary unavailability
-    """
-
-    pass
-
-
-class PermanentToolError(ToolError):
-    """Tool error that should not be retried.
-
-    Examples: invalid parameters, permission denied, resource not found
-    """
-
-    pass
-
-
-@dataclass
-class ToolResult:
+class ToolResult(BaseModel):
     """Standardized tool result."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     success: bool
     data: Any = None
@@ -47,9 +32,10 @@ class ToolResult:
     tool_name: str = ""
 
 
-@dataclass
-class ToolExecutionSpec:
+class ToolExecutionSpec(BaseModel):
     """Execution metadata for a tool."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     concurrency_safe: bool = False
     interrupt_behavior: str = "block"
@@ -60,37 +46,40 @@ class ToolExecutionSpec:
     writes_files: bool = False
 
 
-@dataclass
-class PolicyDecision:
+class PolicyDecision(BaseModel):
     """Tool execution policy decision."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     allowed: bool
     reason: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-@dataclass
-class ToolExecutionRequest:
+class ToolExecutionRequest(BaseModel):
     """Structured request for tool execution."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     tool_id: str
     tool: Any
-    params: dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
     context: Any = None
-    execution_spec: ToolExecutionSpec = field(default_factory=ToolExecutionSpec)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    execution_spec: ToolExecutionSpec = Field(default_factory=ToolExecutionSpec)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-@dataclass
-class ToolExecutionResult:
+class ToolExecutionResult(BaseModel):
     """Structured result for tool execution."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     tool_id: str
     success: bool
     data: Any = None
     error: str | None = None
-    exception: Exception | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    exception: OpenAgentsError | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 @runtime_checkable
@@ -126,12 +115,19 @@ class ToolExecutorPlugin(BasePlugin):
         try:
             data = await request.tool.invoke(request.params or {}, request.context)
             return ToolExecutionResult(tool_id=request.tool_id, success=True, data=data)
-        except Exception as exc:
+        except OpenAgentsError as exc:
             return ToolExecutionResult(
                 tool_id=request.tool_id,
                 success=False,
                 error=str(exc),
                 exception=exc,
+            )
+        except Exception as exc:
+            return ToolExecutionResult(
+                tool_id=request.tool_id,
+                success=False,
+                error=str(exc),
+                exception=ToolError(str(exc), tool_name=request.tool_id),
             )
 
     async def execute_stream(
@@ -154,7 +150,7 @@ class ToolPlugin(BasePlugin):
         """Tool name, defaults to class name."""
         return self.name or self.__class__.__name__
 
-    async def invoke(self, params: dict[str, Any], context: Any) -> Any:
+    async def invoke(self, params: dict[str, Any], context: "RunContext[Any] | None") -> Any:
         """Execute tool call synchronously.
 
         Args:
@@ -171,29 +167,17 @@ class ToolPlugin(BasePlugin):
         return ToolExecutionSpec()
 
     async def invoke_stream(
-        self, params: dict[str, Any], context: Any
+        self, params: dict[str, Any], context: "RunContext[Any] | None"
     ) -> AsyncIterator[dict[str, Any]]:
         """Execute tool call with streaming output.
 
         Yields partial results as they become available.
-
-        Args:
-            params: Tool input parameters
-            context: Execution context
-
-        Yields:
-            Partial tool results
         """
-        # Default: fall back to non-streaming invoke
         result = await self.invoke(params, context)
         yield {"type": "result", "data": result}
 
     def schema(self) -> dict[str, Any]:
-        """Return JSON Schema for tool parameters.
-
-        Returns:
-            JSON Schema object describing input parameters
-        """
+        """Return JSON Schema for tool parameters."""
         return {
             "type": "object",
             "properties": {},
@@ -201,11 +185,7 @@ class ToolPlugin(BasePlugin):
         }
 
     def describe(self) -> dict[str, Any]:
-        """Return tool description for LLM consumption.
-
-        Returns:
-            Tool description including name, purpose, and parameter info
-        """
+        """Return tool description for LLM consumption."""
         return {
             "name": self.name or self.__class__.__name__,
             "description": self.description or "",
@@ -213,49 +193,22 @@ class ToolPlugin(BasePlugin):
         }
 
     def validate_params(self, params: dict[str, Any]) -> tuple[bool, str | None]:
-        """Validate tool parameters.
-
-        Args:
-            params: Parameters to validate
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
-        # Default implementation: no validation
+        """Validate tool parameters."""
         return True, None
 
     def get_dependencies(self) -> list[str]:
-        """Get list of tool IDs this tool depends on.
-
-        Returns:
-            List of tool IDs that must be available
-        """
+        """Get list of tool IDs this tool depends on."""
         return []
 
     async def fallback(
         self,
         error: Exception,
         params: dict[str, Any],
-        context: Any,
+        context: "RunContext[Any] | None",
     ) -> Any:
-        """Fallback handler when invoke fails.
-
-        Called when primary invoke raises an exception. Implementations
-        can provide degraded functionality or graceful error responses.
-
-        The context object can contain:
-        - pattern: Current PatternPlugin instance (if any)
-        - runtime: Current RuntimePlugin instance (if any)
-        - session_id: Current session ID
-        - agent_id: Current agent ID
-        - Any other runtime-specific data
-
-        Args:
-            error: The exception raised by invoke
-            params: Original parameters passed to invoke
-            context: Extended execution context (may include pattern, runtime, etc.)
-
-        Returns:
-            Fallback result, or re-raise the original error if no fallback available
-        """
+        """Fallback handler when invoke fails."""
         raise error
+
+
+if not TYPE_CHECKING:
+    ToolExecutionRequest.model_rebuild()

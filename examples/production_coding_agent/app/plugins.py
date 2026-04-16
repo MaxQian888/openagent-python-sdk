@@ -14,7 +14,8 @@ from openagents.interfaces.capabilities import (
 from openagents.interfaces.context import ContextAssemblyResult
 from openagents.interfaces.followup import FollowupResolution, FollowupResolverPlugin
 from openagents.interfaces.memory import MemoryPlugin
-from openagents.interfaces.pattern import ExecutionContext, PatternPlugin
+from openagents.interfaces.pattern import PatternPlugin
+from openagents.interfaces.run_context import RunContext
 from openagents.interfaces.response_repair import (
     ResponseRepairDecision,
     ResponseRepairPolicyPlugin,
@@ -229,11 +230,11 @@ class ProductionCodingPattern(PatternPlugin):
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={PATTERN_EXECUTE, PATTERN_REACT})
-        self.context: ExecutionContext | None = None
+        self.context: RunContext[Any] | None = None
 
     async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any, transcript: list | None = None, session_artifacts: list | None = None, assembly_metadata: dict | None = None, run_request: Any | None = None, tool_executor: Any | None = None, execution_policy: Any | None = None, followup_resolver: Any | None = None, response_repair_policy: Any | None = None, usage: Any | None = None, artifacts: list[Any] | None = None, **kwargs: Any) -> None:
         _ = kwargs
-        self.context = ExecutionContext(
+        self.context = RunContext[Any](
             agent_id=agent_id,
             session_id=session_id,
             input_text=input_text,
@@ -417,7 +418,12 @@ class ProductionCodingPattern(PatternPlugin):
         search_tool_id = "ripgrep" if "ripgrep" in ctx.tools else "grep_files"
         matches: list[dict[str, Any]] = []
         for pattern in plan.search_patterns[:3]:
-            result = await self.call_tool(search_tool_id, {"path": workspace_root, "pattern": pattern, "case_sensitive": False})
+            try:
+                result = await self.call_tool(search_tool_id, {"path": workspace_root, "pattern": pattern, "case_sensitive": False})
+            except Exception:
+                if search_tool_id != "ripgrep" or "grep_files" not in ctx.tools:
+                    raise
+                result = await self.call_tool("grep_files", {"path": workspace_root, "pattern": pattern, "case_sensitive": False})
             matches.extend(list(result.get("matches", []))[:8])
         read_candidates: list[str] = [str((Path(workspace_root) / path).resolve(strict=False)) for path in plan.target_files]
         for item in matches:

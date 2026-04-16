@@ -102,6 +102,7 @@ from __future__ import annotations
 from typing import Any
 
 from openagents.interfaces.capabilities import TOOL_INVOKE
+from openagents.interfaces.run_context import RunContext
 from openagents.interfaces.tool import ToolPlugin
 
 
@@ -113,7 +114,7 @@ class EchoTool(ToolPlugin):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
         self._prefix = self.config.get("prefix", "echo")
 
-    async def invoke(self, params: dict[str, Any], context: Any) -> Any:
+    async def invoke(self, params: dict[str, Any], context: RunContext[Any] | None) -> Any:
         text = str(params.get("text", "")).strip()
         return {"output": f"{self._prefix}: {text}"}
 
@@ -152,6 +153,7 @@ from typing import Any
 
 from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK
 from openagents.interfaces.memory import MemoryPlugin
+from openagents.interfaces.run_context import RunContext
 
 
 class CustomMemory(MemoryPlugin):
@@ -159,11 +161,11 @@ class CustomMemory(MemoryPlugin):
         super().__init__(config=config or {}, capabilities={MEMORY_INJECT, MEMORY_WRITEBACK})
         self._state_key = self.config.get("state_key", "custom_history")
 
-    async def inject(self, context: Any) -> None:
+    async def inject(self, context: RunContext[Any]) -> None:
         history = context.state.get(self._state_key, [])
         context.memory_view["history"] = list(history)
 
-    async def writeback(self, context: Any) -> None:
+    async def writeback(self, context: RunContext[Any]) -> None:
         history = list(context.state.get(self._state_key, []))
         history.append(
             {
@@ -181,7 +183,7 @@ class CustomMemory(MemoryPlugin):
 通常写法是：
 
 - `setup()` 接收 runtime 注入的数据
-- 把 `ExecutionContext` 放到 `self.context`
+- 把 `RunContext` 放到 `self.context`
 - 在 `execute()` 里编排工具和模型调用
 
 ```python
@@ -190,14 +192,14 @@ from __future__ import annotations
 from typing import Any
 
 from openagents.interfaces.capabilities import PATTERN_EXECUTE, PATTERN_REACT
-from openagents.interfaces.pattern import ExecutionContext
+from openagents.interfaces.run_context import RunContext
 
 
 class CustomPattern:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
-        self.context: ExecutionContext | None = None
+        self.context: RunContext[Any] | None = None
 
     async def setup(
         self,
@@ -211,7 +213,7 @@ class CustomPattern:
         event_bus: Any,
         **kwargs: Any,
     ) -> None:
-        self.context = ExecutionContext(
+        self.context = RunContext[Any](
             agent_id=agent_id,
             session_id=session_id,
             input_text=input_text,
@@ -338,9 +340,9 @@ Skill 适合做 runtime augmentation，不适合接管整个 agent loop。
 
 - caller hint -> `RunRequest.context_hints`
 - 外部追踪信息 -> `RunRequest.metadata`
-- durable per-session state -> `ExecutionContext.state`
-- per-run 临时状态 -> `ExecutionContext.scratch`
-- assembled context protocol -> `ExecutionContext.assembly_metadata`
+- durable per-session state -> `RunContext.state`
+- per-run 临时状态 -> `RunContext.scratch`
+- assembled context protocol -> `RunContext.assembly_metadata`
 - 持久化输出 -> `RunArtifact`
 
 这才是高设计密度 agent 真正该生长的地方。

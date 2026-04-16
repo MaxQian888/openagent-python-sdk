@@ -1,5 +1,7 @@
 """Tests for plugins loader."""
 
+import warnings
+
 import pytest
 
 from openagents.config.loader import load_config_dict
@@ -11,7 +13,7 @@ from openagents.plugins.loader import (
     load_skills_plugin,
     load_tool_plugin,
 )
-from openagents.errors.exceptions import PluginLoadError
+from openagents.errors.exceptions import CapabilityError, PluginLoadError
 
 
 def _config_with_agent(agent_override: dict = None) -> dict:
@@ -56,7 +58,7 @@ def test_load_memory_plugin_buffer():
     """Test loading buffer memory plugin."""
     from openagents.config.schema import MemoryRef
 
-    ref = MemoryRef(type="buffer", impl="openagents.plugins.builtin.memory.buffer.BufferMemory")
+    ref = MemoryRef(type="buffer")
     plugin = load_memory_plugin(ref)
 
     assert plugin is not None
@@ -68,7 +70,7 @@ def test_load_pattern_plugin_react():
     """Test loading react pattern plugin."""
     from openagents.config.schema import PatternRef
 
-    ref = PatternRef(type="react", impl="openagents.plugins.builtin.pattern.react.ReActPattern")
+    ref = PatternRef(type="react")
     plugin = load_pattern_plugin(ref)
 
     assert plugin is not None
@@ -136,7 +138,6 @@ def test_load_tool_plugin():
 
     ref = ToolRef(
         id="test_tool",
-        type="function",
         impl="openagents.plugins.builtin.tool.math_tools.CalcTool",
     )
     plugin = load_tool_plugin(ref)
@@ -160,10 +161,36 @@ def test_load_tool_plugin_invalid_impl():
 
     ref = ToolRef(
         id="test_tool",
-        type="function",
         impl="invalid.module.path",
     )
     with pytest.raises(PluginLoadError):
+        load_tool_plugin(ref)
+
+
+def test_load_memory_plugin_rejects_positional_only_constructor():
+    from openagents.config.schema import MemoryRef
+
+    ref = MemoryRef(impl="tests.fixtures.custom_plugins.LegacyPositionalMemory")
+
+    with pytest.raises(PluginLoadError):
+        load_memory_plugin(ref)
+
+
+def test_load_memory_plugin_surfaces_constructor_typeerror():
+    from openagents.config.schema import MemoryRef
+
+    ref = MemoryRef(impl="tests.fixtures.custom_plugins.ExplodingKeywordMemory")
+
+    with pytest.raises(PluginLoadError, match="keyword constructor blew up"):
+        load_memory_plugin(ref)
+
+
+def test_load_tool_plugin_validates_capability_before_instantiation():
+    from openagents.config.schema import ToolRef
+
+    ref = ToolRef(id="bad_tool", impl="tests.fixtures.custom_plugins.NoInvokeTool")
+
+    with pytest.raises(CapabilityError, match="invoke"):
         load_tool_plugin(ref)
 
 
@@ -180,6 +207,23 @@ def test_plugin_registry():
     assert "buffer" in plugins
 
 
+def test_duplicate_tool_registration_warns():
+    from openagents.decorators import tool
+
+    class FirstTool:
+        pass
+
+    class SecondTool:
+        pass
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        tool(name="dup_loader_tool")(FirstTool)
+        tool(name="dup_loader_tool")(SecondTool)
+
+    assert any("overridden" in str(item.message).lower() for item in caught)
+
+
 def test_load_memory_plugin_missing_method():
     """Test loading memory with missing required method."""
     from openagents.config.schema import MemoryRef
@@ -191,7 +235,7 @@ def test_load_memory_plugin_missing_method():
 
     # Can't easily test this without modifying registry
     # Just verify the plugin loads with valid impl
-    ref = MemoryRef(type="buffer", impl="openagents.plugins.builtin.memory.buffer.BufferMemory")
+    ref = MemoryRef(type="buffer")
     plugin = load_memory_plugin(ref)
     assert plugin is not None
 
@@ -201,7 +245,7 @@ def test_load_pattern_plugin_missing_capability():
     from openagents.config.schema import PatternRef
 
     # A pattern without PATTERN_EXECUTE capability
-    ref = PatternRef(type="unknown", impl="openagents.plugins.builtin.pattern.react.ReActPattern")
+    ref = PatternRef(impl="openagents.plugins.builtin.pattern.react.ReActPattern")
     # Should work since react has the capability
     plugin = load_pattern_plugin(ref)
     assert plugin is not None
@@ -211,7 +255,7 @@ def test_load_agent_plugins_with_tools():
     """Test loading agent with tools."""
     config = load_config_dict(_config_with_agent({
         "tools": [
-            {"id": "calc", "type": "function", "impl": "openagents.plugins.builtin.tool.math_tools.CalcTool"}
+            {"id": "calc", "impl": "openagents.plugins.builtin.tool.math_tools.CalcTool"}
         ]
     }))
     agent = config.agents[0]

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Self
+from typing import Any, Literal, Self
 
 
 class OpenAgentsError(Exception):
@@ -79,6 +79,68 @@ class MaxStepsExceeded(ExecutionError):
 class BudgetExhausted(ExecutionError):
     """Raised when runtime budget limits are exceeded."""
 
+    kind: Literal["tool_calls", "duration", "steps", "cost"] | None
+    current: float | int | None
+    limit: float | int | None
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        kind: Literal["tool_calls", "duration", "steps", "cost"] | None = None,
+        current: float | int | None = None,
+        limit: float | int | None = None,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        run_id: str | None = None,
+        tool_id: str | None = None,
+        step_number: int | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            agent_id=agent_id,
+            session_id=session_id,
+            run_id=run_id,
+            tool_id=tool_id,
+            step_number=step_number,
+        )
+        self.kind = kind
+        self.current = current
+        self.limit = limit
+
+
+class OutputValidationError(ExecutionError):
+    """Final output failed validation after max retries."""
+
+    output_type: Any
+    attempts: int
+    last_validation_error: Any
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        output_type: Any = None,
+        attempts: int = 0,
+        last_validation_error: Any = None,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        run_id: str | None = None,
+        tool_id: str | None = None,
+        step_number: int | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            agent_id=agent_id,
+            session_id=session_id,
+            run_id=run_id,
+            tool_id=tool_id,
+            step_number=step_number,
+        )
+        self.output_type = output_type
+        self.attempts = attempts
+        self.last_validation_error = last_validation_error
+
 
 class SessionError(ExecutionError):
     """Raised when session management fails."""
@@ -132,6 +194,29 @@ class LLMResponseError(LLMError):
 
 class ModelRetryError(LLMError):
     """Raised when the model should retry with corrected input."""
+
+    validation_error: Any
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        validation_error: Any = None,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        run_id: str | None = None,
+        tool_id: str | None = None,
+        step_number: int | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            agent_id=agent_id,
+            session_id=session_id,
+            run_id=run_id,
+            tool_id=tool_id,
+            step_number=step_number,
+        )
+        self.validation_error = validation_error
 
 
 class UserError(OpenAgentsError):

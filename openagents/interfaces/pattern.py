@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from openagents.errors.exceptions import BudgetExhausted
+
 from .plugin import BasePlugin
 from .run_context import RunContext
 
@@ -135,6 +137,40 @@ class PatternPlugin(BasePlugin):
         ctx = self.context
         if ctx.llm_client is None:
             raise RuntimeError("No LLM client configured for this agent")
+
+        # Cost-budget pre-call check (skipped if no budget or cost unavailable).
+        budget = ctx.run_request.budget if ctx.run_request is not None else None
+        max_cost_usd = budget.max_cost_usd if budget is not None else None
+        rate_in = getattr(ctx.llm_client, "price_per_mtok_input", None)
+        if (
+            max_cost_usd is not None
+            and rate_in is not None
+            and ctx.usage is not None
+            and ctx.usage.cost_usd is not None
+        ):
+            est_tokens = sum(
+                ctx.llm_client.count_tokens(m.get("content", "") or "") for m in messages
+            )
+            projected = ctx.usage.cost_usd + (est_tokens / 1_000_000.0) * rate_in
+            if projected > max_cost_usd:
+                raise BudgetExhausted(
+                    f"cost budget exhausted: projected {projected:.4f} > limit {max_cost_usd:.4f}",
+                    kind="cost",
+                    current=ctx.usage.cost_usd,
+                    limit=max_cost_usd,
+                )
+        elif max_cost_usd is not None and (
+            rate_in is None
+            or (ctx.usage is not None and ctx.usage.cost_usd is None)
+        ):
+            if not ctx.scratch.get("__cost_skipped_emitted__"):
+                await self.emit(
+                    "budget.cost_skipped",
+                    limit=max_cost_usd,
+                    reason="cost_unavailable",
+                )
+                ctx.scratch["__cost_skipped_emitted__"] = True
+
         await self.emit("llm.called", model=model)
         response = await ctx.llm_client.generate(
             messages=messages,
@@ -167,6 +203,35 @@ class PatternPlugin(BasePlugin):
                         ctx.usage.cost_breakdown[bucket] = ctx.usage.cost_breakdown.get(bucket, 0.0) + float(amount)
         await self.emit("usage.updated", usage=ctx.usage.model_dump() if ctx.usage else None)
         await self.emit("llm.succeeded", model=model)
+
+        # Cost-budget post-call check.
+        if (
+            max_cost_usd is not None
+            and ctx.usage is not None
+            and ctx.usage.cost_usd is not None
+            and ctx.usage.cost_usd > max_cost_usd
+        ):
+            raise BudgetExhausted(
+                f"cost budget exhausted: {ctx.usage.cost_usd:.4f} > {max_cost_usd:.4f}",
+                kind="cost",
+                current=ctx.usage.cost_usd,
+                limit=max_cost_usd,
+            )
+        # If the provider reported no cost mid-run (cost_usd went None),
+        # emit budget.cost_skipped exactly once so callers notice.
+        if (
+            max_cost_usd is not None
+            and ctx.usage is not None
+            and ctx.usage.cost_usd is None
+            and not ctx.scratch.get("__cost_skipped_emitted__")
+        ):
+            await self.emit(
+                "budget.cost_skipped",
+                limit=max_cost_usd,
+                reason="cost_unavailable",
+            )
+            ctx.scratch["__cost_skipped_emitted__"] = True
+
         return response.output_text
 
     def compose_system_prompt(self, base_prompt: str) -> str:

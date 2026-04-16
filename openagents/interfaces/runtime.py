@@ -36,6 +36,8 @@ class RunBudget(BaseModel):
     max_steps: int | None = None
     max_duration_ms: int | None = None
     max_tool_calls: int | None = None
+    max_validation_retries: int | None = 3
+    max_cost_usd: float | None = None
 
 
 class RunArtifact(BaseModel):
@@ -59,6 +61,10 @@ class RunUsage(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
+    input_tokens_cached: int = 0
+    input_tokens_cache_creation: int = 0
+    cost_usd: float | None = None
+    cost_breakdown: dict[str, float] = Field(default_factory=dict)
 
 
 class RunRequest(BaseModel):
@@ -75,6 +81,7 @@ class RunRequest(BaseModel):
     context_hints: dict[str, Any] = Field(default_factory=dict)
     budget: RunBudget | None = None
     deps: Any = None
+    output_type: type[BaseModel] | None = None
 
 
 OutputT = TypeVar("OutputT")

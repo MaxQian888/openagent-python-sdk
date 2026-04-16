@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from openagents.llm.base import LLMChunk, LLMResponse, LLMToolCall, LLMUsage
 from openagents.llm.providers._http_base import HTTPProviderClient
+
+if TYPE_CHECKING:
+    from openagents.config.schema import LLMPricing
 
 
 _ANTHROPIC_PRICE_TABLE: dict[str, dict[str, float]] = {
@@ -58,6 +61,7 @@ class AnthropicClient(HTTPProviderClient):
         default_temperature: float | None = None,
         max_tokens: int = 1024,
         stream_endpoint: str | None = None,
+        pricing: "LLMPricing | None" = None,
     ) -> None:
         super().__init__(timeout_ms=timeout_ms)
         self.api_base = api_base.rstrip("/")
@@ -75,9 +79,7 @@ class AnthropicClient(HTTPProviderClient):
         self.price_per_mtok_output = rates.get("out")
         self.price_per_mtok_cached_read = rates.get("cached_read")
         self.price_per_mtok_cached_write = rates.get("cached_write")
-        from openagents.config.schema import LLMPricing
-
-        self._pricing_overrides: LLMPricing | None = None
+        self._pricing_overrides = pricing
 
     def _normalize_usage(self, raw_usage: dict[str, Any] | None) -> LLMUsage:
         raw = raw_usage or {}

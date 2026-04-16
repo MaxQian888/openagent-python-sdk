@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from openagents.llm.base import LLMChunk, LLMResponse, LLMToolCall, LLMUsage
 from openagents.llm.providers._http_base import HTTPProviderClient
+
+if TYPE_CHECKING:
+    from openagents.config.schema import LLMPricing
 
 try:
     import tiktoken  # type: ignore
@@ -97,6 +100,7 @@ class OpenAICompatibleClient(HTTPProviderClient):
         api_key_env: str = "OPENAI_API_KEY",
         timeout_ms: int = 30000,
         default_temperature: float | None = None,
+        pricing: "LLMPricing | None" = None,
     ) -> None:
         super().__init__(timeout_ms=timeout_ms)
         self.api_base = api_base.rstrip("/")
@@ -113,9 +117,7 @@ class OpenAICompatibleClient(HTTPProviderClient):
         self.price_per_mtok_cached_read = rates.get("cached_read")
         # OpenAI has no cache-write concept
         self.price_per_mtok_cached_write = rates.get("cached_write")
-        from openagents.config.schema import LLMPricing
-
-        self._pricing_overrides: LLMPricing | None = None
+        self._pricing_overrides = pricing
 
     def _normalize_usage(self, raw_usage: dict[str, Any] | None) -> LLMUsage:
         raw = raw_usage or {}

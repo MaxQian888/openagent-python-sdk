@@ -16,7 +16,7 @@ def create_llm_client(llm: LLMOptions | None) -> LLMClient | None:
 
     provider = llm.provider
     if provider == "mock":
-        return MockLLMClient()
+        return MockLLMClient(model=llm.model, pricing=llm.pricing)
 
     if provider == "anthropic":
         if not llm.api_base:
@@ -31,6 +31,7 @@ def create_llm_client(llm: LLMOptions | None) -> LLMClient | None:
             default_temperature=llm.temperature,
             max_tokens=llm.max_tokens or 1024,
             stream_endpoint=llm.stream_endpoint,
+            pricing=llm.pricing,
         )
 
     if provider == "openai_compatible":
@@ -42,7 +43,21 @@ def create_llm_client(llm: LLMOptions | None) -> LLMClient | None:
             api_key_env=llm.api_key_env or "OPENAI_API_KEY",
             timeout_ms=llm.timeout_ms,
             default_temperature=llm.temperature,
+            pricing=llm.pricing,
         )
 
     raise ConfigError(f"Unsupported llm.provider: '{provider}'")
+
+
+def build_llm_client_from_options(options: LLMOptions) -> LLMClient:
+    """Build an `LLMClient` from `LLMOptions`, threading `pricing` overrides.
+
+    Unlike `create_llm_client`, this function requires non-None options and
+    always returns a concrete client (never ``None``).
+    """
+
+    client = create_llm_client(options)
+    if client is None:  # pragma: no cover - defensive; options is required
+        raise ConfigError("LLMOptions is required to build an LLM client")
+    return client
 

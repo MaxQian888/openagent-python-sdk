@@ -184,7 +184,7 @@ Remove three keys from agent config schema:
 `docs/seams-and-extension-points.md` section 9 (anti-patterns) lists
 `follow-up fallback → followup_resolver` as the *correct* refactor away from
 `Pattern.execute()`. That guidance is superseded by this spec. The doc will be
-updated to reflect that `resolve_followup` and `repair_response` are now override
+updated to reflect that `resolve_followup` and `repair_empty_response` are now override
 methods on `PatternPlugin`, not separate seams.
 
 ## What This Is Not

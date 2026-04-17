@@ -335,3 +335,33 @@ async def test_safe_tool_executor_handles_validation_success_timeout_exception_a
     assert error.success is False and "boom" in (error.error or "")
     assert isinstance(error.exception, ToolError)
     assert chunks == [{"type": "result", "data": {"params": {"value": 1}, "context": {"ctx": True}}, "error": None}]
+
+
+def test_safe_tool_executor_warns_on_unknown_config_keys(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="openagents.interfaces.typed_config"):
+        executor = SafeToolExecutor({"default_timeout_ms": 100, "totally_unknown": 1})
+
+    assert executor._default_timeout_ms == 100
+    assert any(
+        "unknown config keys" in r.message
+        and "SafeToolExecutor" in r.message
+        and "totally_unknown" in r.message
+        for r in caplog.records
+    )
+
+
+def test_http_request_tool_warns_on_unknown_config_keys(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="openagents.interfaces.typed_config"):
+        tool = HttpRequestTool({"timeout": 60, "totally_unknown": 1})
+
+    assert tool._timeout == 60
+    assert any(
+        "unknown config keys" in r.message
+        and "HttpRequestTool" in r.message
+        and "totally_unknown" in r.message
+        for r in caplog.records
+    )

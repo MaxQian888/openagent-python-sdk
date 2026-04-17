@@ -7,8 +7,11 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from openagents.interfaces.capabilities import TOOL_INVOKE
 from openagents.interfaces.tool import ToolPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +139,7 @@ class McpConnection:
                 logger.warning("Error closing MCP writer", exc_info=True)
 
 
-class McpTool(ToolPlugin):
+class McpTool(TypedConfigPluginMixin, ToolPlugin):
     """Tool that forwards calls to an MCP server.
 
     Configuration:
@@ -169,10 +172,15 @@ class McpTool(ToolPlugin):
         Call with params: {"tool": "tool_name", "arguments": {...}}
     """
 
+    class Config(BaseModel):
+        server: dict[str, Any] = Field(default_factory=dict)
+        tools: list[str] = Field(default_factory=list)
+
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
+        self._init_typed_config()
 
-        server_config = self.config.get("server", {})
+        server_config = self.cfg.server
         self._server_config = McpServerConfig(
             command=server_config.get("command"),
             args=server_config.get("args"),
@@ -182,7 +190,7 @@ class McpTool(ToolPlugin):
         )
 
         # List of tools to expose (empty = all)
-        self._exposed_tools = set(self.config.get("tools", []))
+        self._exposed_tools = set(self.cfg.tools)
 
         self._connection: McpConnection | None = None
         self._available_tools: list[dict[str, Any]] | None = None

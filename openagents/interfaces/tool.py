@@ -112,7 +112,18 @@ class ExecutionPolicyPlugin(BasePlugin):
 class ToolExecutorPlugin(BasePlugin):
     """Optional base class for tool executors."""
 
+    async def evaluate_policy(self, request: ToolExecutionRequest) -> PolicyDecision:
+        """Override to restrict tool execution. Default: allow all."""
+        return PolicyDecision(allowed=True)
+
     async def execute(self, request: ToolExecutionRequest) -> ToolExecutionResult:
+        decision = await self.evaluate_policy(request)
+        if not decision.allowed:
+            return ToolExecutionResult(
+                tool_id=request.tool_id,
+                success=False,
+                error=f"policy denied: {decision.reason}",
+            )
         try:
             data = await request.tool.invoke(request.params or {}, request.context)
             return ToolExecutionResult(tool_id=request.tool_id, success=True, data=data)

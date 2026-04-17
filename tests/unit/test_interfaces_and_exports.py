@@ -116,7 +116,7 @@ async def test_exports_registry_and_capability_helpers_cover_public_surface():
     assert supports(plugin, TOOL_INVOKE) is True
     assert StopReason.COMPLETED.value == "completed"
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-    assert pyproject["project"]["version"] == "0.2.0"
+    assert pyproject["project"]["version"] == "0.3.0"
 
 
 @pytest.mark.asyncio

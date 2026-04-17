@@ -208,6 +208,20 @@ class ReflexionPattern(TypedConfigPluginMixin, PatternPlugin):
                 {"role": "user", "content": ctx.input_text},
             ]
             raw = await self.call_llm(messages=messages)
+            # Empty-response repair: give the response_repair_policy seam a
+            # chance to recover when the model returns nothing. Reflexion's
+            # own retry/continue mechanics eventually reach max_steps if no
+            # repair is provided, so this is a minimal guarded hook.
+            if not (raw or "").strip():
+                repair = await self.repair_empty_response(
+                    context=ctx,
+                    messages=messages,
+                    assistant_content=[],
+                    stop_reason=None,
+                    retries=0,
+                )
+                if repair is not None and repair.status == "repaired":
+                    raw = repair.output if isinstance(repair.output, str) else str(repair.output)
             return self._parse_llm_response(raw)
 
         # No LLM, just continue
@@ -217,6 +231,16 @@ class ReflexionPattern(TypedConfigPluginMixin, PatternPlugin):
         """Execute with reflection after each step."""
         self._inject_validation_correction()
         ctx = self.context
+
+        # Followup short-circuit: allow a resolver to answer locally and skip
+        # the reflect/act loop entirely.
+        resolution = await self.resolve_followup(context=ctx)
+        if resolution is not None and resolution.status == "resolved":
+            if ctx.state is not None:
+                ctx.state["_runtime_last_output"] = resolution.output
+                ctx.state["resolved_by"] = "followup_resolver"
+            return resolution.output
+
         max_steps = self._max_steps()
         retries = 0
 

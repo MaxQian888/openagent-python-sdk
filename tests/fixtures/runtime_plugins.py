@@ -475,8 +475,12 @@ class ToolCallingPattern:
         return {"type": "tool_call", "tool": "custom_tool", "params": {"value": self.context.input_text}}
 
     async def execute(self) -> Any:
+        from openagents.interfaces.pattern import unwrap_tool_result
+
         tool = self.context.tools["custom_tool"]
-        return await tool.invoke({"value": self.context.input_text}, self.context)
+        raw = await tool.invoke({"value": self.context.input_text}, self.context)
+        data, _ = unwrap_tool_result(raw)
+        return data
 
 
 class TwoToolCallsPattern:
@@ -502,9 +506,13 @@ class TwoToolCallsPattern:
         return {"type": "continue"}
 
     async def execute(self) -> Any:
+        from openagents.interfaces.pattern import unwrap_tool_result
+
         tool = self.context.tools["custom_tool"]
-        first = await tool.invoke({"value": "one"}, self.context)
-        second = await tool.invoke({"value": "two"}, self.context)
+        first_raw = await tool.invoke({"value": "one"}, self.context)
+        second_raw = await tool.invoke({"value": "two"}, self.context)
+        first, _ = unwrap_tool_result(first_raw)
+        second, _ = unwrap_tool_result(second_raw)
         return {"first": first, "second": second}
 
 
@@ -575,9 +583,13 @@ class ConfigurableToolPattern:
         return {"type": "continue"}
 
     async def execute(self) -> Any:
+        from openagents.interfaces.pattern import unwrap_tool_result
+
         tool_id = self.config.get("tool_id", "custom_tool")
         params = dict(self.config.get("params", {}))
-        return await self.context.tools[tool_id].invoke(params, self.context)
+        raw = await self.context.tools[tool_id].invoke(params, self.context)
+        data, _ = unwrap_tool_result(raw)
+        return data
 
 
 class RuntimePromptSkill:

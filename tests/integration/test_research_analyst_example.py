@@ -9,12 +9,13 @@ ReAct response shape (confirmed from openagents/plugins/builtin/pattern/react.py
 
 Key deviations from the task spec (documented here):
 
-  1. retry_attempts NOT in events.ndjson
-     RetryToolExecutor.execute() stamps retry_attempts on ToolExecutionResult.metadata,
-     but _BoundTool.invoke() returns result.data and discards the ToolExecutionResult
-     metadata entirely.  The tool.succeeded event payload carries the raw return value
-     of tool.invoke(), not the ToolExecutionResult.  Assertion changed to verify
-     tool.called / tool.succeeded events fired for http_request instead.
+  1. retry_attempts now reaches events.ndjson (resolved 2026-04-17)
+     RetryToolExecutor.execute() stamps retry_attempts on ToolExecutionResult.metadata.
+     With the plugin-system-cleanup spec, _BoundTool.invoke() returns the full
+     ToolExecutionResult and pattern.call_tool emits the metadata as the
+     ``executor_metadata`` field on the tool.succeeded event payload.  We can now
+     assert directly on retry_attempts >= 3 in events.ndjson rather than rely on
+     report.md as indirect proof.
 
   2. HttpRequestTool does NOT raise RetryableToolError for HTTP 503
      HttpRequestTool.invoke() catches all urllib errors / HTTP status codes and returns
@@ -153,6 +154,41 @@ async def test_research_analyst_end_to_end(monkeypatch):
         assert '"tool.called"' in events_text, "tool.called event missing"
         assert "http_request" in events_text, "http_request missing from events"
         assert '"tool.succeeded"' in events_text, "tool.succeeded event missing"
+
+        # --- Sub-run A2: /pages/flaky drives RetryToolExecutor.  The first two
+        # requests time out (stub server sleeps 500ms > executor's 200ms timeout),
+        # so the executor retries.  The third attempt succeeds.  We then assert
+        # directly on executor_metadata.retry_attempts in events.ndjson.
+        client.push(json.dumps({
+            "type": "tool_call",
+            "tool": "http_request",
+            "params": {"url": f"{base_url}/pages/flaky", "method": "GET"},
+        }))
+        await runtime.run(
+            agent_id="research-analyst",
+            session_id="flaky-check",
+            input_text="fetch flaky",
+        )
+
+        events_lines = events_path.read_text(encoding="utf-8").splitlines()
+        events = [json.loads(line) for line in events_lines if line.strip()]
+        flaky_event = next(
+            (
+                e for e in events
+                if e.get("name") == "tool.succeeded"
+                and e.get("payload", {}).get("tool_id") == "http_request"
+                and "/pages/flaky" in str((e.get("payload", {}).get("result") or {}).get("url", ""))
+            ),
+            None,
+        )
+        assert flaky_event is not None, (
+            "expected a tool.succeeded event for the /pages/flaky http_request"
+        )
+        executor_metadata = flaky_event["payload"].get("executor_metadata") or {}
+        assert executor_metadata.get("retry_attempts", 0) >= 3, (
+            f"expected retry_attempts >= 3 (the executor should retry past the two "
+            f"500ms timeouts), got executor_metadata={executor_metadata!r}"
+        )
 
         # --- Sub-run B: write_file exercises filesystem policy + report persistence ---
         client.push(json.dumps({

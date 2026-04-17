@@ -181,7 +181,15 @@ class _BoundTool:
             return get_spec()
         return ToolExecutionSpec()
 
-    async def invoke(self, params: dict[str, Any], context: Any) -> Any:
+    async def invoke(self, params: dict[str, Any], context: Any) -> ToolExecutionResult:
+        """Return the full :class:`ToolExecutionResult` so executor metadata
+        (retry counts, timeouts, policy decisions) survives to events.
+
+        The base :class:`PatternPlugin.call_tool` unwraps via
+        :func:`unwrap_tool_result` for backward-compatible data access
+        and propagates ``executor_metadata`` on the ``tool.succeeded``
+        event payload.
+        """
         budget = getattr(getattr(context, "run_request", None), "budget", None)
         usage = getattr(context, "usage", None)
         if budget is not None and budget.max_tool_calls is not None and usage is not None:
@@ -213,7 +221,7 @@ class _BoundTool:
             usage = getattr(context, "usage", None)
             if usage is not None:
                 usage.tool_calls += 1
-            return result.data
+            return result
         if result.exception is not None:
             raise result.exception
         raise RuntimeError(result.error or f"Tool '{self._tool_id}' failed")

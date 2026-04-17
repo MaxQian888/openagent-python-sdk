@@ -11,6 +11,7 @@ from openagents.errors.exceptions import BudgetExhausted, ModelRetryError
 
 from .plugin import BasePlugin
 from .run_context import RunContext
+from .tool import ToolExecutionResult
 
 if TYPE_CHECKING:
     from .followup import FollowupResolverPlugin
@@ -22,6 +23,24 @@ if TYPE_CHECKING:
 
 
 ExecutionContext = RunContext[Any]
+
+
+def unwrap_tool_result(result: Any) -> tuple[Any, dict[str, Any] | None]:
+    """Unwrap a tool invocation return.
+
+    Bound tools (via :class:`_BoundTool` in the default runtime) return
+    the full :class:`ToolExecutionResult` so executor metadata such as
+    retry counts, timeouts, and policy decisions can flow into events.
+    Raw :class:`ToolPlugin.invoke` returns whatever the tool itself
+    produced, which is treated as opaque data with no metadata.
+
+    Custom patterns that override ``call_tool`` and call
+    ``tool.invoke()`` directly should call this helper to handle both
+    return shapes uniformly.
+    """
+    if isinstance(result, ToolExecutionResult):
+        return result.data, dict(result.metadata or {})
+    return result, None
 
 
 class PatternPlugin(BasePlugin):
@@ -151,19 +170,26 @@ class PatternPlugin(BasePlugin):
                 return result
             raise
 
+        data, executor_metadata = unwrap_tool_result(result)
+
         # Successful path resets the retry counter for this tool.
         counts = ctx.scratch.get("__tool_retry_counts__")
         if counts and tool_id in counts:
             counts.pop(tool_id, None)
-        ctx.tool_results.append({"tool_id": tool_id, "result": result})
+        ctx.tool_results.append({"tool_id": tool_id, "result": data})
         if (
             ctx.usage is not None
             and before_tool_calls is not None
             and ctx.usage.tool_calls == before_tool_calls
         ):
             ctx.usage.tool_calls += 1
-        await self.emit("tool.succeeded", tool_id=tool_id, result=result)
-        return result
+        await self.emit(
+            "tool.succeeded",
+            tool_id=tool_id,
+            result=data,
+            executor_metadata=executor_metadata,
+        )
+        return data
 
     async def call_llm(
         self,

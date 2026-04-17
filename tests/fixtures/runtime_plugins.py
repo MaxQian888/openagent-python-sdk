@@ -733,3 +733,35 @@ class SummarizingContextAssembler:
 class BadContextAssembler:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
+
+
+from openagents.interfaces.pattern import PatternPlugin as _PatternPlugin  # noqa: E402
+
+
+class QueuedRawOutputPattern(_PatternPlugin):
+    """Pattern fixture that returns a queue of raw outputs on successive execute() calls.
+
+    Inherits ``PatternPlugin`` so it picks up ``finalize()``,
+    ``_format_validation_error()``, and ``_inject_validation_correction()``.
+    Each ``execute()`` call pops one item from the config-provided
+    ``responses`` list and returns it as raw output, allowing the validation
+    retry loop to drive multiple attempts.
+    """
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        from openagents.interfaces.capabilities import PATTERN_EXECUTE
+
+        super().__init__(config=config or {}, capabilities={PATTERN_EXECUTE})
+        self._responses = list(self.config.get("responses", []))
+        self.execute_calls = 0
+
+    async def execute(self) -> Any:
+        # Apply any queued validation correction from prior failed finalize.
+        self._inject_validation_correction()
+        self.execute_calls += 1
+        if not self._responses:
+            raise RuntimeError("QueuedRawOutputPattern exhausted its response queue")
+        return self._responses.pop(0)
+
+    async def react(self) -> dict[str, Any]:
+        return {"type": "final", "content": await self.execute()}

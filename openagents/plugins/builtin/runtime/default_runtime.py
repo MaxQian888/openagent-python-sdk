@@ -44,7 +44,9 @@ from openagents.interfaces.runtime import (
 from openagents.errors.exceptions import (
     BudgetExhausted,
     MaxStepsExceeded,
+    ModelRetryError,
     OpenAgentsError,
+    OutputValidationError,
     PatternError,
 )
 from openagents.interfaces.session import SessionArtifact
@@ -379,7 +381,96 @@ class DefaultRuntime(RuntimePlugin):
                 self._enforce_duration_budget(request=request, started_at=started_at)
                 await self._run_memory_inject(agent=agent, memory=plugins.memory, pattern=plugins.pattern)
                 self._enforce_duration_budget(request=request, started_at=started_at)
-                result = await plugins.pattern.execute()
+
+                output_type = request.output_type
+                max_retries = (
+                    request.budget.max_validation_retries
+                    if request.budget is not None
+                    and request.budget.max_validation_retries is not None
+                    else 3
+                )
+                attempts = 0
+                raw = await plugins.pattern.execute()
+                self._enforce_duration_budget(request=request, started_at=started_at)
+                validation_exhausted: OutputValidationError | None = None
+
+                finalize_fn = getattr(plugins.pattern, "finalize", None)
+                if finalize_fn is None:
+                    # Duck-typed pattern without finalize hook: skip validation entirely.
+                    result = raw
+                    validation_exhausted = None
+                    # Fall through past the while loop (no retries needed).
+                    finalize_enabled = False
+                else:
+                    finalize_enabled = True
+
+                while finalize_enabled:
+                    try:
+                        result = await finalize_fn(raw, output_type)
+                        break
+                    except ModelRetryError as retry_exc:
+                        attempts += 1
+                        if max_retries is not None and attempts > max_retries:
+                            validation_exhausted = OutputValidationError(
+                                str(retry_exc),
+                                output_type=output_type,
+                                attempts=attempts,
+                                last_validation_error=retry_exc.validation_error,
+                            ).with_context(
+                                agent_id=request.agent_id,
+                                session_id=request.session_id,
+                                run_id=request.run_id,
+                            )
+                            break
+                        pattern_ctx = getattr(plugins.pattern, "context", None)
+                        if pattern_ctx is not None:
+                            pattern_ctx.scratch["last_validation_error"] = {
+                                "attempt": attempts,
+                                "message": str(retry_exc),
+                                "expected_schema": (
+                                    output_type.model_json_schema() if output_type is not None else {}
+                                ),
+                            }
+                        await self._event_bus.emit(
+                            "validation.retry",
+                            agent_id=request.agent_id,
+                            session_id=request.session_id,
+                            run_id=request.run_id,
+                            attempt=attempts,
+                            error=str(retry_exc),
+                        )
+                        raw = await plugins.pattern.execute()
+                        self._enforce_duration_budget(request=request, started_at=started_at)
+
+                if validation_exhausted is not None:
+                    await self._append_transcript(
+                        request=request,
+                        final_output=str(validation_exhausted),
+                        stop_reason=RUN_STOP_FAILED,
+                        is_error=True,
+                    )
+                    await self._persist_artifacts(request.session_id, artifacts)
+                    await self._event_bus.emit(
+                        RUN_FAILED,
+                        agent_id=request.agent_id,
+                        session_id=request.session_id,
+                        run_id=request.run_id,
+                        error=str(validation_exhausted),
+                    )
+                    return RunResult(
+                        run_id=request.run_id,
+                        final_output=None,
+                        stop_reason=RUN_STOP_FAILED,
+                        usage=usage,
+                        artifacts=list(artifacts),
+                        exception=validation_exhausted,
+                        error=str(validation_exhausted),
+                        metadata={
+                            "agent_id": request.agent_id,
+                            "session_id": request.session_id,
+                        },
+                    )
+
                 self._enforce_duration_budget(request=request, started_at=started_at)
                 await self._run_memory_writeback(agent=agent, memory=plugins.memory, pattern=plugins.pattern)
                 self._enforce_duration_budget(request=request, started_at=started_at)

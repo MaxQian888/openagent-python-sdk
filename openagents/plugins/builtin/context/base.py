@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
+
 from openagents.interfaces.context import ContextAssemblerPlugin, ContextAssemblyResult
 
 
@@ -17,12 +19,17 @@ class TokenBudgetContextAssembler(ContextAssemblerPlugin):
     focused on ordering logic.
     """
 
+    class Config(BaseModel):
+        max_input_tokens: int = 8000
+        max_artifacts: int = 10
+        reserve_for_response: int = 2000
+
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities=set())
-        cfg = self.config
-        self._max_input_tokens = int(cfg.get("max_input_tokens", 8000))
-        self._max_artifacts = int(cfg.get("max_artifacts", 10))
-        self._reserve_for_response = int(cfg.get("reserve_for_response", 2000))
+        cfg = self.Config.model_validate(self.config)
+        self._max_input_tokens = cfg.max_input_tokens
+        self._max_artifacts = cfg.max_artifacts
+        self._reserve_for_response = cfg.reserve_for_response
 
     def _effective_budget(self) -> int:
         return max(0, self._max_input_tokens - self._reserve_for_response)

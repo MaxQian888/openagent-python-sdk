@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
+
 from openagents.plugins.builtin.context.base import TokenBudgetContextAssembler
 
 
@@ -13,6 +15,12 @@ class HeadTailContextAssembler(TokenBudgetContextAssembler):
     Useful when the transcript opens with a system prompt or task statement
     worth preserving unconditionally while also keeping the recent tail.
     """
+
+    class Config(BaseModel):
+        max_input_tokens: int = 8000
+        max_artifacts: int = 10
+        reserve_for_response: int = 2000
+        head_messages: int = 3
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config)

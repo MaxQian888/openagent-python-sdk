@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
+
 from openagents.interfaces.context import ContextAssemblerPlugin, ContextAssemblyResult
 
 
@@ -18,11 +20,17 @@ class TruncatingContextAssembler(ContextAssemblerPlugin):
     previous name misled users into expecting LLM-driven summarization.
     """
 
+    class Config(BaseModel):
+        max_messages: int = 20
+        max_artifacts: int = 10
+        include_summary_message: bool = True
+
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities=set())
-        self._max_messages = int(self.config.get("max_messages", 20))
-        self._max_artifacts = int(self.config.get("max_artifacts", 10))
-        self._include_summary_message = bool(self.config.get("include_summary_message", True))
+        cfg = self.Config.model_validate(self.config)
+        self._max_messages = cfg.max_messages
+        self._max_artifacts = cfg.max_artifacts
+        self._include_summary_message = cfg.include_summary_message
 
     async def assemble(
         self,

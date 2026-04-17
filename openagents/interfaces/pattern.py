@@ -105,6 +105,8 @@ class PatternPlugin(BasePlugin):
         params: dict[str, Any] | None = None,
     ) -> Any:
         """Call a tool with retry and fallback support."""
+        from openagents.errors.exceptions import PermanentToolError
+
         ctx = self.context
         if tool_id not in ctx.tools:
             raise KeyError(f"Tool '{tool_id}' is not registered")
@@ -113,21 +115,55 @@ class PatternPlugin(BasePlugin):
         before_tool_calls = ctx.usage.tool_calls if ctx.usage is not None else None
         try:
             result = await tool.invoke(params or {}, ctx)
-            ctx.tool_results.append({"tool_id": tool_id, "result": result})
-            if (
-                ctx.usage is not None
-                and before_tool_calls is not None
-                and ctx.usage.tool_calls == before_tool_calls
-            ):
-                ctx.usage.tool_calls += 1
-            await self.emit("tool.succeeded", tool_id=tool_id, result=result)
-            return result
+        except ModelRetryError as retry_exc:
+            counts = ctx.scratch.setdefault("__tool_retry_counts__", {})
+            counts[tool_id] = counts.get(tool_id, 0) + 1
+            budget = ctx.run_request.budget if ctx.run_request is not None else None
+            limit = (
+                budget.max_validation_retries
+                if budget is not None and budget.max_validation_retries is not None
+                else 3
+            )
+            if counts[tool_id] > limit:
+                await self.emit("tool.failed", tool_id=tool_id, error=str(retry_exc))
+                raise PermanentToolError(
+                    f"Tool '{tool_id}' exceeded validation retry budget ({limit})",
+                    tool_name=tool_id,
+                ) from retry_exc
+            await self.emit(
+                "tool.retry_requested",
+                tool_id=tool_id,
+                attempt=counts[tool_id],
+                error=str(retry_exc),
+            )
+            ctx.transcript.append({
+                "role": "system",
+                "content": (
+                    f"Tool '{tool_id}' requested a retry (attempt {counts[tool_id]}): {retry_exc}. "
+                    "Please adjust your arguments and try again."
+                ),
+            })
+            raise
         except Exception as exc:
             await self.emit("tool.failed", tool_id=tool_id, error=str(exc))
             result = await tool.fallback(exc, params or {}, ctx)
             if result is not None:
                 return result
             raise
+
+        # Successful path resets the retry counter for this tool.
+        counts = ctx.scratch.get("__tool_retry_counts__")
+        if counts and tool_id in counts:
+            counts.pop(tool_id, None)
+        ctx.tool_results.append({"tool_id": tool_id, "result": result})
+        if (
+            ctx.usage is not None
+            and before_tool_calls is not None
+            and ctx.usage.tool_calls == before_tool_calls
+        ):
+            ctx.usage.tool_calls += 1
+        await self.emit("tool.succeeded", tool_id=tool_id, result=result)
+        return result
 
     async def call_llm(
         self,

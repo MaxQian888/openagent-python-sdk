@@ -94,3 +94,24 @@ def test_registered_in_builtin_registry() -> None:
 
     cls = get_builtin_plugin_class("events", "rich_console")
     assert cls is RichConsoleEventBus
+
+
+@pytest.mark.asyncio
+async def test_single_line_render_when_show_payload_false() -> None:
+    bus, console = _make_bus(show_payload=False)
+    await bus.emit("tool.called", agent_id="a1", tool="bash")
+
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
+
+    buf = StringIO()
+    real = RichConsole(file=buf, force_terminal=False, highlight=False)
+    real.print(console.rendered[0])
+    rendered = buf.getvalue()
+    # Single-line renderer emits 'name  key=value key=value' on one line
+    assert "tool.called" in rendered
+    assert "agent_id=" in rendered
+    assert "tool=" in rendered
+    # Panel renderer would add box-drawing characters like '╭' or '┌'
+    assert "╭" not in rendered and "┌" not in rendered

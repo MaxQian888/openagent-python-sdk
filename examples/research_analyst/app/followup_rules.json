@@ -1,0 +1,14 @@
+[
+  {
+    "name": "queried_urls",
+    "pattern": "(刚.*(查|调|访问)|what.*urls?.*(query|hit|fetch))",
+    "template": "本轮共调用的工具：{tool_ids}\n最后一次的输入是：{last_input}",
+    "requires_history": true
+  },
+  {
+    "name": "last_tools",
+    "pattern": "(用了哪些工具|which tools.*use)",
+    "template": "上一轮工具：{tool_ids}",
+    "requires_history": true
+  }
+]

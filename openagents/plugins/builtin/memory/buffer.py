@@ -4,32 +4,36 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK
 from openagents.interfaces.memory import MemoryPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
-class BufferMemory(MemoryPlugin):
+class BufferMemory(TypedConfigPluginMixin, MemoryPlugin):
     """Append-only in-session memory with configurable projection."""
+
+    class Config(BaseModel):
+        state_key: str = "memory_buffer"
+        view_key: str = "history"
+        max_items: int | None = Field(default=None, gt=0)
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(
             config=config or {},
             capabilities={MEMORY_INJECT, MEMORY_WRITEBACK},
         )
+        self._init_typed_config()
 
     def _state_key(self) -> str:
-        return str(self.config.get("state_key", "memory_buffer"))
+        return self.cfg.state_key
 
     def _view_key(self) -> str:
-        return str(self.config.get("view_key", "history"))
+        return self.cfg.view_key
 
     def _max_items(self) -> int | None:
-        raw = self.config.get("max_items")
-        if raw is None:
-            return None
-        if isinstance(raw, int) and raw > 0:
-            return raw
-        return None
+        return self.cfg.max_items
 
     def _get_buffer(self, context: Any) -> list[dict[str, Any]]:
         state_key = self._state_key()
@@ -69,4 +73,3 @@ class BufferMemory(MemoryPlugin):
         buffer.append(record)
         self._trim_in_place(buffer)
         context.memory_view[self._view_key()] = self._slice_for_view(buffer)
-

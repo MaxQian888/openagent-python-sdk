@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 from datetime import datetime, timezone
@@ -17,24 +18,30 @@ from openagents.interfaces.events import (
     EventBusPlugin,
     RuntimeEvent,
 )
+from openagents.observability.redact import redact
 
 logger = logging.getLogger("openagents.events.file_logging")
+
+
+def _matches_any(name: str, patterns: list[str]) -> bool:
+    return any(fnmatch.fnmatchcase(name, pat) for pat in patterns)
 
 
 class FileLoggingEventBus(EventBusPlugin):
     """Wraps another event bus and appends every matched event to an NDJSON log.
 
     What:
-        Forwards every emit to an inner bus first (so subscribers
-        always run), then appends a JSON line to ``log_path``. If
-        ``include_events`` is set, only those names are written.
-        File-write failures are logged and swallowed - event
-        delivery is never disrupted by IO errors.
+        Forwards every emit to an inner bus first (so subscribers always
+        run), then appends a JSON line to ``log_path``. Supports fnmatch
+        glob filtering via ``include_events``/``exclude_events``, payload
+        redaction via ``redact_keys``, and long-value truncation via
+        ``max_value_length``. File-write failures are logged and swallowed -
+        event delivery is never disrupted by IO errors.
 
     Usage:
         ``{"events": {"type": "file_logging", "config": {"log_path":
         ".logs/events.ndjson", "inner": {"type": "async"},
-        "include_events": ["tool.called", "tool.succeeded"]}}}``
+        "include_events": ["tool.*"], "redact_keys": ["api_key"]}}}``
 
     Depends on:
         - the local filesystem at ``log_path``
@@ -46,6 +53,9 @@ class FileLoggingEventBus(EventBusPlugin):
         inner: dict[str, Any] = Field(default_factory=lambda: {"type": "async"})
         log_path: str
         include_events: list[str] | None = None
+        exclude_events: list[str] = Field(default_factory=list)
+        redact_keys: list[str] = Field(default_factory=list)
+        max_value_length: int = 10_000
         max_history: int = 10_000
 
     def __init__(self, config: dict[str, Any] | None = None):
@@ -56,10 +66,12 @@ class FileLoggingEventBus(EventBusPlugin):
         cfg = self.Config.model_validate(self.config)
         self._log_path = Path(cfg.log_path)
         self._log_path.parent.mkdir(parents=True, exist_ok=True)
-        self._include = set(cfg.include_events) if cfg.include_events is not None else None
+        self._include = list(cfg.include_events) if cfg.include_events is not None else None
+        self._exclude = list(cfg.exclude_events)
+        self._redact_keys = list(cfg.redact_keys)
+        self._max_value_length = cfg.max_value_length
         inner_ref = dict(cfg.inner)
         inner_cfg = dict(inner_ref.get("config") or {})
-        # Forward max_history to the inner bus unless it already specifies one.
         inner_cfg.setdefault("max_history", cfg.max_history)
         inner_ref["config"] = inner_cfg
         self._inner = self._load_inner(inner_ref)
@@ -70,15 +82,31 @@ class FileLoggingEventBus(EventBusPlugin):
 
         return load_plugin("events", EventBusRef(**ref), required_methods=("emit", "subscribe"))
 
+    def _should_log(self, event_name: str) -> bool:
+        if self._exclude and _matches_any(event_name, self._exclude):
+            return False
+        if self._include is None:
+            return True
+        return _matches_any(event_name, self._include)
+
     def subscribe(self, event_name: str, handler: Callable[[RuntimeEvent], Awaitable[None] | None]) -> None:
         self._inner.subscribe(event_name, handler)
 
     async def emit(self, event_name: str, **payload: Any) -> RuntimeEvent:
         event = await self._inner.emit(event_name, **payload)
-        if self._include is None or event_name in self._include:
+        if self._should_log(event_name):
             try:
+                rendered_payload = (
+                    redact(payload, keys=self._redact_keys, max_value_length=self._max_value_length)
+                    if self._redact_keys or self._max_value_length
+                    else payload
+                )
                 line = json.dumps(
-                    {"name": event_name, "payload": payload, "ts": datetime.now(timezone.utc).isoformat()},
+                    {
+                        "name": event_name,
+                        "payload": rendered_payload,
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                    },
                     ensure_ascii=False,
                     default=str,
                 )

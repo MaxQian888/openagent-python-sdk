@@ -25,7 +25,23 @@ class _WindowBufferConfig(BaseModel):
 
 
 class WindowBufferMemory(BufferMemory):
-    """Sliding-window memory built on top of BufferMemory."""
+    """Sliding-window memory built on top of BufferMemory.
+
+    What:
+        Like :class:`BufferMemory` but rejects any items beyond the
+        configured ``window_size``. Internally translates
+        ``window_size`` to :class:`BufferMemory`'s ``max_items`` so
+        trimming logic stays in one place.
+
+    Usage:
+        ``{"type": "window_buffer", "config": {"window_size": 20}}``
+        (``state_key`` / ``view_key`` optional).
+
+    Depends on:
+        - :class:`BufferMemory` (parent class) for inject/writeback.
+        - ``RunContext.state`` and ``RunContext.memory_view`` (via
+          parent).
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         raw = dict(config or {})

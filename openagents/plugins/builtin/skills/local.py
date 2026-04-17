@@ -53,7 +53,24 @@ def _parse_flat_yaml(path: Path | None) -> dict[str, str]:
 
 
 class LocalSkillsManager(TypedConfigPluginMixin, SkillsPlugin):
-    """Discover and execute repo-local skill packages."""
+    """Discover and execute repo-local skill packages.
+
+    What:
+        Walks ``search_paths`` for directories whose ``SKILL.md``
+        opens with YAML frontmatter, treats each as a skill
+        package, and exposes them through ``prepare_session`` /
+        ``load_references`` / ``run_skill``. Skill payloads run by
+        importing ``<package>.entrypoint:run_openagent_skill``.
+
+    Usage:
+        ``{"skills": {"type": "local", "config": {"search_paths":
+        ["skills"], "enabled": ["my_skill"]}}}``
+
+    Depends on:
+        - the local filesystem under ``search_paths``
+        - the host runtime's session manager (injected as
+          ``self._session_manager``)
+    """
 
     _STATE_KEY = "_session_skills"
 

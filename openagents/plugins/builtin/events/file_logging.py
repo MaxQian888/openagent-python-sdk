@@ -24,9 +24,22 @@ logger = logging.getLogger("openagents.events.file_logging")
 class FileLoggingEventBus(EventBusPlugin):
     """Wraps another event bus and appends every matched event to an NDJSON log.
 
-    Use for audit trails or post-mortem debugging. File I/O is synchronous per
-    ``emit`` call; if the log write fails, the error is logged but event delivery
-    to subscribers is never disrupted.
+    What:
+        Forwards every emit to an inner bus first (so subscribers
+        always run), then appends a JSON line to ``log_path``. If
+        ``include_events`` is set, only those names are written.
+        File-write failures are logged and swallowed - event
+        delivery is never disrupted by IO errors.
+
+    Usage:
+        ``{"events": {"type": "file_logging", "config": {"log_path":
+        ".logs/events.ndjson", "inner": {"type": "async"},
+        "include_events": ["tool.called", "tool.succeeded"]}}}``
+
+    Depends on:
+        - the local filesystem at ``log_path``
+        - an inner event bus loaded via
+          :func:`openagents.plugins.loader.load_plugin`
     """
 
     class Config(BaseModel):

@@ -10,9 +10,19 @@ from openagents.plugins.builtin.context.base import TokenBudgetContextAssembler
 class SlidingWindowContextAssembler(TokenBudgetContextAssembler):
     """Keep as many trailing messages as fit within the token budget.
 
-    Older messages are dropped first. Suited to dialog-style agents where
-    recency dominates and system instructions are injected by the pattern
-    through a separate channel.
+    What:
+        Older messages are dropped first. Suited to dialog-style
+        agents where recency dominates and system instructions are
+        injected by the pattern through a separate channel.
+
+    Usage:
+        ``{"context_assembler": {"type": "sliding_window", "config":
+        {"max_input_tokens": 8000, "reserve_for_response": 2000,
+        "max_artifacts": 10}}}``
+
+    Depends on:
+        - :class:`TokenBudgetContextAssembler` (parent class) for
+          token counting via the LLM client
     """
 
     def _trim_by_budget(

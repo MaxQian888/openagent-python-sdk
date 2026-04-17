@@ -18,8 +18,20 @@ logger = logging.getLogger(__name__)
 class ReflexionPattern(TypedConfigPluginMixin, PatternPlugin):
     """Reflexion pattern: execute, reflect on results, retry if needed.
 
-    After each tool result, LLM reflects on whether the task is complete
-    or needs retry with adjusted approach.
+    What:
+        After each tool result the LLM reflects on whether the task is
+        complete; if not, it adjusts approach and retries up to
+        ``max_retries`` times. Useful for tasks where the first
+        attempt is often wrong but recoverable.
+
+    Usage:
+        ``{"type": "reflexion", "config": {"max_steps": 16,
+        "max_retries": 2, "step_timeout_ms": 30000}}``
+
+    Depends on:
+        - ``RunContext.llm_client`` for execution + reflection
+        - ``RunContext.tools`` for tool dispatch
+        - ``RunContext.event_bus`` for tool/llm/usage events
     """
 
     class Config(BaseModel):

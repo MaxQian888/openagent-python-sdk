@@ -11,7 +11,22 @@ from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
 class BasicResponseRepairPolicy(TypedConfigPluginMixin, ResponseRepairPolicyPlugin):
-    """Default repair policy that emits a structured error diagnosis."""
+    """Default repair policy that emits a structured error diagnosis.
+
+    What:
+        Called when ``pattern.execute`` returns an empty assistant
+        message. Returns a structured ``ResponseRepairDecision``
+        describing the failure (most recent input, last tool
+        result if any) so downstream observers can attribute the
+        empty response. Never retries the LLM directly.
+
+    Usage:
+        ``{"response_repair_policy": {"type": "basic"}}``
+
+    Depends on:
+        - the most recent ``tool_results`` and ``input_text`` on
+          ``RunContext``
+    """
 
     class Config(BaseModel):
         pass

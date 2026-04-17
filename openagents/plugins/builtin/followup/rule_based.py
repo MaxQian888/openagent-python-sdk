@@ -22,7 +22,25 @@ class Rule(BaseModel):
 
 
 class RuleBasedFollowupResolver(FollowupResolverPlugin):
-    """Resolve follow-ups via user-configured regex to template rules."""
+    """Resolve follow-ups via user-configured regex to template rules.
+
+    What:
+        Loads a list of ``Rule`` entries (regex pattern + response
+        template) from config or an external JSON file, matches the
+        most recent user message against them, and returns the
+        first hit interpolated with capture groups. Skips rules
+        marked ``requires_history`` when the transcript is empty.
+
+    Usage:
+        ``{"followup_resolver": {"type": "rule_based", "config":
+        {"rules": [{"name": "thanks", "pattern": "^thanks?$",
+        "template": "You are welcome!", "requires_history":
+        false}]}}}`` or set ``"rules_file": "path/to/rules.json"``.
+
+    Depends on:
+        - ``RunContext.input_text``
+        - optional rules JSON file at ``rules_file``
+    """
 
     class Config(BaseModel):
         rules_file: str | None = None

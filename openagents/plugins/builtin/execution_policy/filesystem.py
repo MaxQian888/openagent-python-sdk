@@ -45,7 +45,24 @@ def _is_within(path: Path, roots: list[Path]) -> bool:
 
 
 class FilesystemExecutionPolicy(TypedConfigPluginMixin, ExecutionPolicyPlugin):
-    """Builtin policy for filesystem-oriented workloads."""
+    """Builtin policy for filesystem-oriented workloads.
+
+    What:
+        Allows/denies the standard read_/write_/list_/grep_/ripgrep
+        tools based on configured ``read_roots`` / ``write_roots``
+        and tool-name allow/deny lists. Resolves and rejects path
+        traversal that would escape the declared roots.
+
+    Usage:
+        ``{"execution_policy": {"type": "filesystem", "config":
+        {"read_roots": ["./data"], "write_roots": ["./out"],
+        "allow_tools": ["read_file"], "deny_tools":
+        ["delete_file"]}}}``
+
+    Depends on:
+        - request.params (for path keys: ``path``, ``file_path``,
+          ``directory``, ``dir_path``, ``cwd``, ``root``)
+    """
 
     class Config(BaseModel):
         read_roots: list[str] = Field(default_factory=list)

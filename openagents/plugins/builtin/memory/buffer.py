@@ -12,7 +12,25 @@ from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
 class BufferMemory(TypedConfigPluginMixin, MemoryPlugin):
-    """Append-only in-session memory with configurable projection."""
+    """Append-only in-session memory with configurable projection.
+
+    What:
+        Stores every (input, tool_results, output) triple in a single
+        list inside session state and projects the recent slice into
+        ``context.memory_view``. Suitable as a default short-term
+        memory for stateless agents.
+
+    Usage:
+        ``{"type": "buffer", "config": {"state_key": "memory_buffer",
+        "view_key": "history", "max_items": 50}}`` (all keys
+        optional; ``max_items`` defaults to unbounded).
+
+    Depends on:
+        - ``RunContext.state`` (writeable session state)
+        - ``RunContext.memory_view`` (writeable inject target)
+        - ``RunContext.input_text``, ``RunContext.tool_results``,
+          ``RunContext.state['_runtime_last_output']``
+    """
 
     class Config(BaseModel):
         state_key: str = "memory_buffer"

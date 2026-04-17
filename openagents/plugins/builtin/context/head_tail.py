@@ -12,8 +12,20 @@ from openagents.plugins.builtin.context.base import TokenBudgetContextAssembler
 class HeadTailContextAssembler(TokenBudgetContextAssembler):
     """Keep the first N messages and as many trailing messages as budget allows.
 
-    Useful when the transcript opens with a system prompt or task statement
-    worth preserving unconditionally while also keeping the recent tail.
+    What:
+        Useful when the transcript opens with a system prompt or
+        task statement worth preserving unconditionally while also
+        keeping the recent tail. Drops the middle until token usage
+        falls under ``max_input_tokens - reserve_for_response``.
+
+    Usage:
+        ``{"context_assembler": {"type": "head_tail", "config":
+        {"max_input_tokens": 8000, "head_messages": 3,
+        "reserve_for_response": 2000, "max_artifacts": 10}}}``
+
+    Depends on:
+        - :class:`TokenBudgetContextAssembler` (parent class) for
+          tokenization and dropping
     """
 
     class Config(BaseModel):

@@ -14,7 +14,23 @@ from openagents.interfaces.tool import (
 
 
 class CompositeExecutionPolicy(ExecutionPolicyPlugin):
-    """Combine multiple execution policies with AND (``all``) or OR (``any``) semantics."""
+    """Combine multiple execution policies with AND (``all``) or OR (``any``) semantics.
+
+    What:
+        Loads each child policy via the plugin loader and combines
+        their decisions. ``mode='all'`` denies if any child denies;
+        ``mode='any'`` allows if any child allows. Useful for
+        layering filesystem + network + custom policies.
+
+    Usage:
+        ``{"execution_policy": {"type": "composite", "config":
+        {"mode": "all", "policies": [{"type": "filesystem", "config":
+        {...}}, {"type": "network_allowlist", "config": {...}}]}}}``
+
+    Depends on:
+        - :func:`openagents.plugins.loader.load_plugin` for child
+          policies
+    """
 
     class Config(BaseModel):
         policies: list[dict[str, Any]]

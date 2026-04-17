@@ -13,7 +13,24 @@ from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
 class SafeToolExecutor(TypedConfigPluginMixin, ToolExecutorPlugin):
-    """Builtin tool executor with basic validation and timeout handling."""
+    """Builtin tool executor with basic validation and timeout handling.
+
+    What:
+        Runs ``tool.invoke`` under ``asyncio.wait_for`` with the
+        per-request or default timeout. Calls ``tool.validate_params``
+        first if present and short-circuits with a ToolError on
+        failure. Returns a ToolExecutionResult with timeout
+        metadata; never raises directly.
+
+    Usage:
+        ``{"tool_executor": {"type": "safe", "config":
+        {"default_timeout_ms": 30000, "allow_stream_passthrough":
+        true}}}``
+
+    Depends on:
+        - the wrapped tool's ``invoke`` / ``invoke_stream``
+        - per-tool ``execution_spec().default_timeout_ms`` (optional)
+    """
 
     class Config(BaseModel):
         default_timeout_ms: int = 30_000

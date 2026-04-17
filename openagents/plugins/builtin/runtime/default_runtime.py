@@ -266,10 +266,28 @@ class _BoundTool:
 class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
     """Default runtime implementation.
 
-    Orchestrates agent execution with:
-    - Session isolation and locking
-    - Event lifecycle management
-    - Memory inject/execute/writeback flow
+    What:
+        Owns the per-run orchestration: acquires the session lock,
+        runs ``context_assembler.assemble``, rebinds tools through
+        ``execution_policy + tool_executor``, then drives
+        ``pattern.setup`` / ``memory.inject`` / ``pattern.execute`` /
+        ``memory.writeback``, finally persists the transcript and
+        artifacts. Emits the full set of lifecycle events declared in
+        :data:`openagents.interfaces.event_taxonomy.EVENT_SCHEMAS`.
+
+    Usage:
+        ``{"runtime": {"type": "default"}}``. Optional
+        per-dependency overrides under ``config.tool_executor``,
+        ``config.execution_policy``, ``config.context_assembler``,
+        ``config.followup_resolver``,
+        ``config.response_repair_policy``.
+
+    Depends on:
+        - ``EventBusPlugin`` (top-level ``events``) for emit
+        - ``SessionManagerPlugin`` (top-level ``session``) for state
+          and transcript persistence
+        - the agent's ``memory`` / ``pattern`` / optional executor
+          and policy plugins
     """
 
     class Config(BaseModel):

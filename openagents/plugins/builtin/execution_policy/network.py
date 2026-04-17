@@ -33,7 +33,23 @@ def _is_private(host: str) -> bool:
 
 
 class NetworkAllowlistExecutionPolicy(ExecutionPolicyPlugin):
-    """Allowlist host/scheme for network-flavored tools (e.g. ``http_request``)."""
+    """Allowlist host/scheme for network-flavored tools (e.g. ``http_request``).
+
+    What:
+        Inspects ``request.params['url']`` (or ``host``) for tools in
+        ``applies_to_tools`` and rejects URLs whose scheme/host
+        aren't in the allowlists. ``deny_private_networks`` blocks
+        loopback / RFC1918 / link-local addresses. Tools outside
+        ``applies_to_tools`` always pass.
+
+    Usage:
+        ``{"execution_policy": {"type": "network_allowlist", "config":
+        {"allow_hosts": ["api.example.com"], "allow_schemes":
+        ["https"], "deny_private_networks": true}}}``
+
+    Depends on:
+        - request.params (``url`` / ``host`` keys)
+    """
 
     class Config(BaseModel):
         allow_hosts: list[str] = Field(default_factory=list)

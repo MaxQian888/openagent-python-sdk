@@ -37,16 +37,24 @@ def _now() -> str:
 class JsonlFileSessionManager(SessionManagerPlugin):
     """Append-only NDJSON persistence for sessions.
 
-    Each mutation writes one line of the form
-    ``{"type": "transcript|artifact|checkpoint|state", "data": ..., "ts": ISO}``.
-    On first access to a session, prior lines are replayed to rebuild in-memory state.
+    What:
+        Each mutation appends one line of the form
+        ``{"type": "transcript|artifact|checkpoint|state", "data":
+        ..., "ts": ISO}`` under ``root_dir/<session_id>.jsonl``. On
+        first access prior lines are replayed to rebuild in-memory
+        state. Per-session ``asyncio.Lock`` serializes writers so
+        concurrent appends preserve order.
 
-    Designed for single-runtime deployments. File I/O (`open` / `write` / optional
-    `fsync`) runs synchronously on the event-loop thread, which is fine for typical
-    agent transcripts but will become a bottleneck under heavy concurrent writes;
-    in that regime, put a purpose-built persistence layer behind the seam instead.
-    Session IDs containing dots work correctly via ``Path.stem`` but are not
-    recommended for clarity.
+    Usage:
+        ``{"session": {"type": "jsonl_file", "config": {"root_dir":
+        ".sessions", "fsync": false}}}``. Set ``fsync=true`` when
+        durability across power loss matters.
+
+    Depends on:
+        - the local filesystem at ``root_dir`` (created on init)
+        - synchronous ``open`` / ``write`` on the event loop thread;
+          fine for typical transcripts, swap in a purpose-built
+          backend for heavy concurrent writes
     """
 
     class Config(BaseModel):

@@ -15,8 +15,21 @@ from openagents.interfaces.typed_config import TypedConfigPluginMixin
 class PlanExecutePattern(TypedConfigPluginMixin, PatternPlugin):
     """Two-phase pattern: planning first, then execution.
 
-    Phase 1 (Plan): LLM generates a step-by-step plan
-    Phase 2 (Execute): Execute each step, handle tool results
+    What:
+        Phase 1 asks the LLM to produce a numbered plan and emits
+        ``pattern.plan_created``. Phase 2 walks each plan step,
+        dispatching tools as needed and emitting ``pattern.phase`` /
+        ``pattern.step_started`` / ``pattern.step_finished``. Useful
+        when work decomposes naturally before any tool is called.
+
+    Usage:
+        ``{"type": "plan_execute", "config": {"max_steps": 16,
+        "step_timeout_ms": 30000}}``
+
+    Depends on:
+        - ``RunContext.llm_client`` for plan + step generation
+        - ``RunContext.tools`` for tool dispatch
+        - ``RunContext.event_bus`` for plan/phase/step events
     """
 
     class Config(BaseModel):

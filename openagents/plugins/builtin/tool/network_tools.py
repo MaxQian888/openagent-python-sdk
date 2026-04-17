@@ -11,7 +11,12 @@ from openagents.interfaces.capabilities import TOOL_INVOKE
 
 
 class URLParseTool(ToolPlugin):
-    """Parse URL into components."""
+    """Parse URL into components.
+
+    What: ``urlparse`` wrapper exposing scheme/netloc/host/port/path/query/fragment.
+    Usage: ``{"id": "url_parse", "type": "url_parse"}``; invoke with ``{"url": "https://..."}``.
+    Depends on: stdlib ``urllib.parse``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -40,7 +45,12 @@ class URLParseTool(ToolPlugin):
 
 
 class URLBuildTool(ToolPlugin):
-    """Build URL from components."""
+    """Build URL from components.
+
+    What: assemble ``scheme://host/path?query#fragment``; minimal string concat (no encoding).
+    Usage: ``{"id": "url_build", "type": "url_build"}``; invoke with ``{"scheme": "https", "host": "...", "path": "/x"}``.
+    Depends on: nothing (stdlib).
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -66,7 +76,12 @@ class URLBuildTool(ToolPlugin):
 
 
 class QueryParamTool(ToolPlugin):
-    """Extract/query URL parameters."""
+    """Extract/query URL parameters.
+
+    What: parse a URL's query string and ``get`` or ``list`` its parameters.
+    Usage: ``{"id": "qparam", "type": "query_param"}``; invoke with ``{"url": "...", "key": "...", "action": "get"}``.
+    Depends on: stdlib ``urllib.parse``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -101,7 +116,12 @@ class QueryParamTool(ToolPlugin):
 
 
 class HostLookupTool(ToolPlugin):
-    """Simple host information extraction from URL."""
+    """Simple host information extraction from URL.
+
+    What: parse host/port/scheme from a URL and report HTTPS flag plus best-guess TLD.
+    Usage: ``{"id": "host_lookup", "type": "host_lookup"}``; invoke with ``{"url": "https://..."}``.
+    Depends on: stdlib ``urllib.parse``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})

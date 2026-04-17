@@ -23,8 +23,21 @@ logger = logging.getLogger("openagents")
 class AsyncEventBus(TypedConfigPluginMixin, EventBusPlugin):
     """Async in-memory event bus with history.
 
-    Events are stored in memory and can be queried.
-    Use for single-instance deployments or testing.
+    What:
+        Stores events in a bounded ring buffer and dispatches to
+        per-name and ``*`` wildcard subscribers. Performs the
+        advisory schema check from
+        :data:`openagents.interfaces.event_taxonomy.EVENT_SCHEMAS`
+        on each emit and logs a warning on missing required keys.
+        Default for single-instance deployments and test suites.
+
+    Usage:
+        ``{"events": {"type": "async", "config": {"max_history":
+        10000}}}``
+
+    Depends on:
+        - :data:`openagents.interfaces.event_taxonomy.EVENT_SCHEMAS`
+          for the advisory payload check
     """
 
     class Config(BaseModel):

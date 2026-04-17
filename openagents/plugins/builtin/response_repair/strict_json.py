@@ -46,7 +46,23 @@ def _extract_balanced(text: str) -> str | None:
 
 
 class StrictJsonResponseRepairPolicy(ResponseRepairPolicyPlugin):
-    """Salvage JSON from assistant text blocks; optionally delegate to Basic on miss."""
+    """Salvage JSON from assistant text blocks; optionally delegate to Basic on miss.
+
+    What:
+        For empty/short assistant responses, scans the latest LLM
+        message for code-fenced JSON or balanced ``{}`` / ``[]``
+        spans, and if found re-promotes that as the structured
+        output. Falls back to :class:`BasicResponseRepairPolicy`
+        on miss when ``fallback_to_basic`` is true.
+
+    Usage:
+        ``{"response_repair_policy": {"type": "strict_json",
+        "config": {"min_text_length": 8, "strip_code_fence": true,
+        "fallback_to_basic": true}}}``
+
+    Depends on:
+        - :class:`BasicResponseRepairPolicy` (when fallback enabled)
+    """
 
     class Config(BaseModel):
         min_text_length: int = 8

@@ -142,34 +142,21 @@ class McpConnection:
 class McpTool(TypedConfigPluginMixin, ToolPlugin):
     """Tool that forwards calls to an MCP server.
 
-    Configuration:
-        - server: Server connection config
-            - command: Executable command (e.g., "python", "node")
-            - args: Command arguments (e.g., ["server.py"])
-            - env: Environment variables (optional)
-            - url: Remote server URL (optional, for HTTP/SSE)
-            - headers: HTTP headers (optional, for HTTP/SSE)
-        - tools: List of tool names to expose (optional, exposes all if empty)
+    What:
+        Bridges to a Model Context Protocol server (stdio command or
+        HTTP/SSE URL) and exposes the server's tools through this
+        single ToolPlugin. ``invoke`` accepts ``{"tool": "<name>",
+        "arguments": {...}}`` and forwards to the server. Optionally
+        filters which tools are visible.
 
-    Usage in agent config:
-        {
-            "tools": [
-                {
-                    "id": "mcp_filesystem",
-                    "type": "mcp",
-                    "config": {
-                        "server": {
-                            "command": "python",
-                            "args": ["/path/to/mcp_server.py"]
-                        },
-                        "tools": ["read_file", "write_file"]
-                    }
-                }
-            ]
-        }
+    Usage:
+        ``{"id": "mcp_fs", "type": "mcp", "config": {"server":
+        {"command": "python", "args": ["server.py"]}, "tools":
+        ["read_file"]}}``. Requires ``uv sync --extra mcp``.
 
-    Calling the tool:
-        Call with params: {"tool": "tool_name", "arguments": {...}}
+    Depends on:
+        - the optional ``mcp`` Python SDK
+        - an external MCP server reachable via stdio or HTTP/SSE
     """
 
     class Config(BaseModel):

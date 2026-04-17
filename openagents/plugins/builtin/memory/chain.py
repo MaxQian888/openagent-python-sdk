@@ -11,23 +11,22 @@ from openagents.interfaces.memory import MemoryPlugin
 class ChainMemory(MemoryPlugin):
     """Chain multiple memory plugins together.
 
-    inject: calls each memory in order (first to last)
-    writeback: calls each memory in reverse order (last to first)
-    retrieve: merges results from all memories
+    What:
+        Composes child memories so ``inject`` calls each child in
+        declared order and ``writeback`` calls them in reverse, the
+        same lifecycle ordering used by middleware-style stacks.
+        ``retrieve`` flattens hits from every child that supports
+        the capability.
 
     Usage:
-        # In config, use impl to load chain with multiple memories:
-        {
-            "memory": {
-                "impl": "openagents.plugins.builtin.memory.chain.ChainMemory",
-                "config": {
-                    "memories": [
-                        {"type": "window_buffer", "config": {"window_size": 10}},
-                        {"type": "buffer"}
-                    ]
-                }
-            }
-        }
+        ``{"type": "chain", "config": {"memories": [{"type":
+        "window_buffer", "config": {"window_size": 10}}, {"type":
+        "buffer"}]}}``
+
+    Depends on:
+        - :func:`openagents.plugins.loader.load_plugin` (loads each
+          declared child memory)
+        - the configured child memories
     """
 
     def __init__(self, config: dict[str, Any] | None = None):

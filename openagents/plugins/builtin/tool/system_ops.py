@@ -12,7 +12,12 @@ from openagents.interfaces.tool import ToolPlugin
 
 
 class ExecuteCommandTool(ToolPlugin):
-    """Execute shell command."""
+    """Execute shell command.
+
+    What: spawn a subshell, run a command with timeout, return stdout/stderr/returncode.
+    Usage: ``{"id": "exec", "type": "execute_command", "config": {"timeout": 30}}``; invoke with ``{"command": "..."}``.
+    Depends on: ``asyncio.create_subprocess_shell``; pair with a strict execution policy.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -47,7 +52,12 @@ class ExecuteCommandTool(ToolPlugin):
 
 
 class GetEnvTool(ToolPlugin):
-    """Get environment variable."""
+    """Get environment variable.
+
+    What: read ``os.environ[key]`` with optional default; reports presence flag.
+    Usage: ``{"id": "get_env", "type": "get_env"}``; invoke with ``{"key": "PATH", "default": ""}``.
+    Depends on: ``os.environ``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -64,7 +74,12 @@ class GetEnvTool(ToolPlugin):
 
 
 class SetEnvTool(ToolPlugin):
-    """Set environment variable (process-level only)."""
+    """Set environment variable (process-level only).
+
+    What: assign ``os.environ[key]=value`` for the running process; not exported to children.
+    Usage: ``{"id": "set_env", "type": "set_env"}``; invoke with ``{"key": "FLAG", "value": "1"}``.
+    Depends on: ``os.environ``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})

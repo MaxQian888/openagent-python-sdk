@@ -22,8 +22,18 @@ from openagents.interfaces.typed_config import TypedConfigPluginMixin
 class InMemorySessionManager(TypedConfigPluginMixin, SessionManagerPlugin):
     """In-memory session manager with async locks.
 
-    Sessions are stored in memory and will be lost on restart.
-    Use for single-instance deployments or testing.
+    What:
+        Stores transcript, artifacts, checkpoints, and free-form
+        state per session in process memory. Acquires a per-session
+        ``asyncio.Lock`` so concurrent ``runtime.run`` calls against
+        the same session id serialize. Lost on process restart -
+        use ``jsonl_file`` for persistence.
+
+    Usage:
+        ``{"session": {"type": "in_memory"}}`` (no config required).
+
+    Depends on:
+        - nothing (pure in-process state)
     """
 
     class Config(BaseModel):

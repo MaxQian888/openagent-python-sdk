@@ -10,14 +10,22 @@ from openagents.plugins.builtin.context.base import TokenBudgetContextAssembler
 class ImportanceWeightedContextAssembler(TokenBudgetContextAssembler):
     """Keep high-importance messages first, fill remaining budget chronologically.
 
-    Priority order (higher score = kept first):
+    What:
+        Priority order (higher score = kept first):
+        1. The first ``role=system`` message (baseline instructions)
+        2. The most recent ``role=user`` message
+        3. The most recent ``role=tool`` message
+        4. Other recent messages
+        Chronological order is preserved in the returned transcript.
 
-    1. The first ``role=system`` message (baseline instructions)
-    2. The most recent ``role=user`` message
-    3. The most recent ``role=tool`` message
-    4. Other recent messages
+    Usage:
+        ``{"context_assembler": {"type": "importance_weighted",
+        "config": {"max_input_tokens": 8000, "reserve_for_response":
+        2000, "max_artifacts": 10}}}``
 
-    Chronological order is preserved in the returned transcript.
+    Depends on:
+        - :class:`TokenBudgetContextAssembler` (parent class) for
+          token counting via the LLM client
     """
 
     def _score(self, index: int, msg: dict[str, Any], total: int) -> float:

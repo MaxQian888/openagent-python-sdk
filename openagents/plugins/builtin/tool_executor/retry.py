@@ -18,7 +18,24 @@ from openagents.interfaces.tool import (
 class RetryToolExecutor(ToolExecutorPlugin):
     """Wraps another ToolExecutor and retries on classified errors with exponential backoff.
 
-    ``execute_stream`` does not retry; it delegates transparently.
+    What:
+        Delegates to an inner executor and, on returned failures
+        whose exception type matches ``retry_on`` (or any
+        :class:`ToolTimeoutError` if ``retry_on_timeout``), sleeps
+        for an exponential delay and tries again up to
+        ``max_attempts`` times. Annotates the final result's
+        metadata with ``retry_attempts`` / ``retry_delays_ms`` /
+        ``retry_reasons``. ``execute_stream`` is a transparent
+        passthrough (no retry).
+
+    Usage:
+        ``{"tool_executor": {"type": "retry", "config": {"inner":
+        {"type": "safe"}, "max_attempts": 3, "initial_delay_ms":
+        200, "backoff_multiplier": 2.0, "max_delay_ms": 5000}}}``
+
+    Depends on:
+        - the wrapped inner ``ToolExecutorPlugin`` loaded via
+          :func:`openagents.plugins.loader.load_plugin`
     """
 
     class Config(BaseModel):

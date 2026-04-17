@@ -11,7 +11,22 @@ from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
 class BasicFollowupResolver(TypedConfigPluginMixin, FollowupResolverPlugin):
-    """Answer simple follow-up questions from local memory/state."""
+    """Answer simple follow-up questions from local memory/state.
+
+    What:
+        Inspects ``context.input_text`` for marker words like
+        "previous", "last", "again", "earlier" and answers from the
+        last assistant message in memory if present. Returns
+        ``None`` when no rule matches so the runtime falls back to a
+        normal LLM call.
+
+    Usage:
+        ``{"followup_resolver": {"type": "basic"}}``
+
+    Depends on:
+        - ``RunContext.input_text`` and recent assistant messages
+          on the session transcript
+    """
 
     class Config(BaseModel):
         pass

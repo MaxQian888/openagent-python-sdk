@@ -11,7 +11,12 @@ from openagents.interfaces.tool import ToolExecutionSpec, ToolPlugin
 
 
 class ReadFileTool(ToolPlugin):
-    """Read file content."""
+    """Read file content.
+
+    What: read a single text file as UTF-8 and return its content.
+    Usage: ``{"id": "read_file", "type": "read_file"}``; invoke with ``{"path": "..."}``.
+    Depends on: local filesystem.
+    """
 
     name = "read_file"
     description = "Read the content of a file from the filesystem"
@@ -57,7 +62,12 @@ class ReadFileTool(ToolPlugin):
 
 
 class WriteFileTool(ToolPlugin):
-    """Write content to file."""
+    """Write content to file.
+
+    What: write or append UTF-8 content to a file, creating parent directories as needed.
+    Usage: ``{"id": "write_file", "type": "write_file"}``; invoke with ``{"path": "...", "content": "...", "mode": "w"}``.
+    Depends on: local filesystem.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -85,7 +95,12 @@ class WriteFileTool(ToolPlugin):
 
 
 class ListFilesTool(ToolPlugin):
-    """List files in directory."""
+    """List files in directory.
+
+    What: glob files under a directory (optionally recursive).
+    Usage: ``{"id": "list_files", "type": "list_files"}``; invoke with ``{"path": ".", "pattern": "*", "recursive": false}``.
+    Depends on: local filesystem.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -114,7 +129,12 @@ class ListFilesTool(ToolPlugin):
 
 
 class DeleteFileTool(ToolPlugin):
-    """Delete file or directory."""
+    """Delete file or directory.
+
+    What: remove a single file (``Path.unlink``) or directory tree (``shutil.rmtree``).
+    Usage: ``{"id": "delete_file", "type": "delete_file"}``; invoke with ``{"path": "..."}``.
+    Depends on: local filesystem.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})

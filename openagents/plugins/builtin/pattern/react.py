@@ -14,7 +14,26 @@ from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
 class ReActPattern(TypedConfigPluginMixin, PatternPlugin):
-    """ReAct pattern implementation."""
+    """ReAct pattern implementation.
+
+    What:
+        A minimal Reason-Act loop. Each step the LLM produces either a
+        tool call (prefixed by ``tool_prefix``) or a final answer
+        (prefixed by ``echo_prefix``). Tool calls are dispatched
+        through ``RunContext.tools`` and their results fed back into
+        the next step until the budget is hit or a final answer
+        appears.
+
+    Usage:
+        ``{"type": "react", "config": {"tool_prefix": "/tool",
+        "echo_prefix": "Echo", "max_steps": 16, "step_timeout_ms":
+        30000}}``
+
+    Depends on:
+        - ``RunContext.llm_client`` for step generation
+        - ``RunContext.tools`` for tool dispatch
+        - ``RunContext.event_bus`` for tool/llm/usage events
+    """
 
     _PENDING_TOOL_KEY = "_react_pending_tool"
 

@@ -12,12 +12,20 @@ from openagents.interfaces.context import ContextAssemblerPlugin, ContextAssembl
 class TruncatingContextAssembler(ContextAssemblerPlugin):
     """Builtin context assembler that trims transcript and artifact history.
 
-    Pure count-based truncation. Keeps the last ``max_messages`` entries of
-    the transcript and the last ``max_artifacts`` session artifacts. Does
-    NOT call an LLM; inserted system message is a plain count summary.
+    What:
+        Pure count-based truncation. Keeps the last ``max_messages``
+        transcript entries and the last ``max_artifacts`` session
+        artifacts; emits a plain "[N earlier messages omitted]"
+        notice. Does NOT call an LLM. Renamed from
+        ``SummarizingContextAssembler`` in 0.3.0 because the previous
+        name misled users.
 
-    Renamed from ``SummarizingContextAssembler`` in 0.3.0 because the
-    previous name misled users into expecting LLM-driven summarization.
+    Usage:
+        ``{"context_assembler": {"type": "truncating", "config":
+        {"max_messages": 50, "max_artifacts": 20}}}``
+
+    Depends on:
+        - ``session_manager.load_messages`` / ``list_artifacts``
     """
 
     class Config(BaseModel):

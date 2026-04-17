@@ -19,6 +19,7 @@ from openagents.decorators import (
 )
 from openagents.plugins.builtin.events.async_event_bus import AsyncEventBus
 from openagents.plugins.builtin.events.file_logging import FileLoggingEventBus
+from openagents.plugins.builtin.events.otel_bridge import OtelEventBusBridge
 from openagents.plugins.builtin.skills.local import LocalSkillsManager
 from openagents.plugins.builtin.context.truncating import TruncatingContextAssembler
 from openagents.plugins.builtin.context.head_tail import HeadTailContextAssembler
@@ -41,6 +42,7 @@ from openagents.plugins.builtin.response_repair.basic import BasicResponseRepair
 from openagents.plugins.builtin.response_repair.strict_json import StrictJsonResponseRepairPolicy
 from openagents.plugins.builtin.session.in_memory import InMemorySessionManager
 from openagents.plugins.builtin.session.jsonl_file import JsonlFileSessionManager
+from openagents.plugins.builtin.session.sqlite_backed import SqliteSessionManager
 from openagents.plugins.builtin.tool_executor.safe import SafeToolExecutor
 from openagents.plugins.builtin.tool_executor.retry import RetryToolExecutor
 from openagents.plugins.builtin.tool.common import BuiltinSearchTool
@@ -116,10 +118,12 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     "session": {
         "in_memory": InMemorySessionManager,
         "jsonl_file": JsonlFileSessionManager,
+        "sqlite": SqliteSessionManager,
     },
     "events": {
         "async": AsyncEventBus,
         "file_logging": FileLoggingEventBus,
+        "otel_bridge": OtelEventBusBridge,
     },
     "skills": {
         "local": LocalSkillsManager,

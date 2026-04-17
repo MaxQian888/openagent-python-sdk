@@ -16,7 +16,7 @@ from .capabilities import (
     TOOL_INVOKE,
 )
 from .context import ContextAssemblerPlugin, ContextAssemblyResult
-from .followup import FollowupResolution, FollowupResolverPlugin
+from .followup import FollowupResolution
 from .events import (
     EventBusPlugin,
     EVENT_EMIT,
@@ -31,7 +31,7 @@ from .memory import MemoryPlugin
 from .pattern import ExecutionContext, PatternPlugin
 from .plugin import BasePlugin
 from .run_context import RunContext
-from .response_repair import ResponseRepairDecision, ResponseRepairPolicyPlugin
+from .response_repair import ResponseRepairDecision
 from .runtime import (
     RUNTIME_LIFECYCLE,
     RUNTIME_MANAGE,
@@ -56,8 +56,6 @@ from .session import (
 )
 from .skills import SessionSkillSummary, SkillsPlugin
 from .tool import (
-    ExecutionPolicy,
-    ExecutionPolicyPlugin,
     PolicyDecision,
     PermanentToolError,
     RetryableToolError,
@@ -78,15 +76,11 @@ __all__ = [
     "ContextAssemblerPlugin",
     "ContextAssemblyResult",
     "FollowupResolution",
-    "FollowupResolverPlugin",
     "MemoryPlugin",
     "PatternPlugin",
     "ResponseRepairDecision",
-    "ResponseRepairPolicyPlugin",
     "SkillsPlugin",
     "SessionSkillSummary",
-    "ExecutionPolicy",
-    "ExecutionPolicyPlugin",
     "PolicyDecision",
     "ToolPlugin",
     "ToolExecutionSpec",

@@ -228,7 +228,7 @@ class PlanExecutePattern(TypedConfigPluginMixin, PatternPlugin):
         if resolution is not None and resolution.status == "resolved":
             if ctx.state is not None:
                 ctx.state["_runtime_last_output"] = resolution.output
-                ctx.state["resolved_by"] = "followup_resolver"
+                ctx.state["resolved_by"] = "resolve_followup"
             return resolution.output
 
         if not self._llm_enabled():

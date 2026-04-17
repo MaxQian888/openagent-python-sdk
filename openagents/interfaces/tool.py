@@ -84,13 +84,6 @@ class ToolExecutionResult(BaseModel):
 
 
 @runtime_checkable
-class ExecutionPolicy(Protocol):
-    """Policy hook for tool execution."""
-
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision: ...
-
-
-@runtime_checkable
 class ToolExecutor(Protocol):
     """Executor hook between patterns and tool implementations."""
 
@@ -100,13 +93,6 @@ class ToolExecutor(Protocol):
         self,
         request: ToolExecutionRequest,
     ) -> AsyncIterator[dict[str, Any]]: ...
-
-
-class ExecutionPolicyPlugin(BasePlugin):
-    """Optional base class for execution policies."""
-
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
-        return PolicyDecision(allowed=True)
 
 
 class ToolExecutorPlugin(BasePlugin):

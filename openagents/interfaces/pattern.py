@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel, ValidationError
+
+from openagents.errors.exceptions import BudgetExhausted, ModelRetryError
 
 from .plugin import BasePlugin
 from .run_context import RunContext
+from .tool import ToolExecutionResult
 
 if TYPE_CHECKING:
     from .followup import FollowupResolverPlugin
@@ -17,6 +23,24 @@ if TYPE_CHECKING:
 
 
 ExecutionContext = RunContext[Any]
+
+
+def unwrap_tool_result(result: Any) -> tuple[Any, dict[str, Any] | None]:
+    """Unwrap a tool invocation return.
+
+    Bound tools (via :class:`_BoundTool` in the default runtime) return
+    the full :class:`ToolExecutionResult` so executor metadata such as
+    retry counts, timeouts, and policy decisions can flow into events.
+    Raw :class:`ToolPlugin.invoke` returns whatever the tool itself
+    produced, which is treated as opaque data with no metadata.
+
+    Custom patterns that override ``call_tool`` and call
+    ``tool.invoke()`` directly should call this helper to handle both
+    return shapes uniformly.
+    """
+    if isinstance(result, ToolExecutionResult):
+        return result.data, dict(result.metadata or {})
+    return result, None
 
 
 class PatternPlugin(BasePlugin):
@@ -100,29 +124,79 @@ class PatternPlugin(BasePlugin):
         params: dict[str, Any] | None = None,
     ) -> Any:
         """Call a tool with retry and fallback support."""
+        from openagents.errors.exceptions import PermanentToolError
+
         ctx = self.context
         if tool_id not in ctx.tools:
-            raise KeyError(f"Tool '{tool_id}' is not registered")
+            from openagents.errors.suggestions import near_match
+
+            available = sorted(ctx.tools.keys())
+            guess = near_match(tool_id, available)
+            extra = f" Did you mean '{guess}'?" if guess else ""
+            raise KeyError(
+                f"Tool '{tool_id}' is not registered.{extra} Available tools: {available}"
+            )
         tool = ctx.tools[tool_id]
         await self.emit("tool.called", tool_id=tool_id, params=params or {})
         before_tool_calls = ctx.usage.tool_calls if ctx.usage is not None else None
         try:
             result = await tool.invoke(params or {}, ctx)
-            ctx.tool_results.append({"tool_id": tool_id, "result": result})
-            if (
-                ctx.usage is not None
-                and before_tool_calls is not None
-                and ctx.usage.tool_calls == before_tool_calls
-            ):
-                ctx.usage.tool_calls += 1
-            await self.emit("tool.succeeded", tool_id=tool_id, result=result)
-            return result
+        except ModelRetryError as retry_exc:
+            counts = ctx.scratch.setdefault("__tool_retry_counts__", {})
+            counts[tool_id] = counts.get(tool_id, 0) + 1
+            budget = ctx.run_request.budget if ctx.run_request is not None else None
+            limit = (
+                budget.max_validation_retries
+                if budget is not None and budget.max_validation_retries is not None
+                else 3
+            )
+            if counts[tool_id] > limit:
+                await self.emit("tool.failed", tool_id=tool_id, error=str(retry_exc))
+                raise PermanentToolError(
+                    f"Tool '{tool_id}' exceeded validation retry budget ({limit})",
+                    tool_name=tool_id,
+                ) from retry_exc
+            await self.emit(
+                "tool.retry_requested",
+                tool_id=tool_id,
+                attempt=counts[tool_id],
+                error=str(retry_exc),
+            )
+            ctx.transcript.append({
+                "role": "system",
+                "content": (
+                    f"Tool '{tool_id}' requested a retry (attempt {counts[tool_id]}): {retry_exc}. "
+                    "Please adjust your arguments and try again."
+                ),
+            })
+            raise
         except Exception as exc:
             await self.emit("tool.failed", tool_id=tool_id, error=str(exc))
             result = await tool.fallback(exc, params or {}, ctx)
             if result is not None:
                 return result
             raise
+
+        data, executor_metadata = unwrap_tool_result(result)
+
+        # Successful path resets the retry counter for this tool.
+        counts = ctx.scratch.get("__tool_retry_counts__")
+        if counts and tool_id in counts:
+            counts.pop(tool_id, None)
+        ctx.tool_results.append({"tool_id": tool_id, "result": data})
+        if (
+            ctx.usage is not None
+            and before_tool_calls is not None
+            and ctx.usage.tool_calls == before_tool_calls
+        ):
+            ctx.usage.tool_calls += 1
+        await self.emit(
+            "tool.succeeded",
+            tool_id=tool_id,
+            result=data,
+            executor_metadata=executor_metadata,
+        )
+        return data
 
     async def call_llm(
         self,
@@ -132,10 +206,43 @@ class PatternPlugin(BasePlugin):
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> str:
-        """Call LLM with streaming support."""
         ctx = self.context
         if ctx.llm_client is None:
             raise RuntimeError("No LLM client configured for this agent")
+
+        # Cost-budget pre-call check (skipped if no budget or cost unavailable).
+        budget = ctx.run_request.budget if ctx.run_request is not None else None
+        max_cost_usd = budget.max_cost_usd if budget is not None else None
+        rate_in = getattr(ctx.llm_client, "price_per_mtok_input", None)
+        if (
+            max_cost_usd is not None
+            and rate_in is not None
+            and ctx.usage is not None
+            and ctx.usage.cost_usd is not None
+        ):
+            est_tokens = sum(
+                ctx.llm_client.count_tokens(m.get("content", "") or "") for m in messages
+            )
+            projected = ctx.usage.cost_usd + (est_tokens / 1_000_000.0) * rate_in
+            if projected > max_cost_usd:
+                raise BudgetExhausted(
+                    f"cost budget exhausted: projected {projected:.4f} > limit {max_cost_usd:.4f}",
+                    kind="cost",
+                    current=ctx.usage.cost_usd,
+                    limit=max_cost_usd,
+                )
+        elif max_cost_usd is not None and (
+            rate_in is None
+            or (ctx.usage is not None and ctx.usage.cost_usd is None)
+        ):
+            if not ctx.scratch.get("__cost_skipped_emitted__"):
+                await self.emit(
+                    "budget.cost_skipped",
+                    limit=max_cost_usd,
+                    reason="cost_unavailable",
+                )
+                ctx.scratch["__cost_skipped_emitted__"] = True
+
         await self.emit("llm.called", model=model)
         response = await ctx.llm_client.generate(
             messages=messages,
@@ -149,7 +256,54 @@ class PatternPlugin(BasePlugin):
                 ctx.usage.input_tokens += response.usage.input_tokens
                 ctx.usage.output_tokens += response.usage.output_tokens
                 ctx.usage.total_tokens += response.usage.total_tokens
+
+                meta = response.usage.metadata or {}
+                cached_read = int(meta.get("cache_read_input_tokens", meta.get("cached_tokens", 0)) or 0)
+                cached_write = int(meta.get("cache_creation_input_tokens", 0) or 0)
+                ctx.usage.input_tokens_cached += cached_read
+                ctx.usage.input_tokens_cache_creation += cached_write
+
+                call_cost = meta.get("cost_usd")
+                sticky = ctx.scratch.get("__cost_unavailable__")
+                if sticky or call_cost is None:
+                    ctx.usage.cost_usd = None
+                    ctx.scratch["__cost_unavailable__"] = True
+                else:
+                    current = ctx.usage.cost_usd if ctx.usage.cost_usd is not None else 0.0
+                    ctx.usage.cost_usd = current + float(call_cost)
+                    for bucket, amount in (meta.get("cost_breakdown") or {}).items():
+                        ctx.usage.cost_breakdown[bucket] = ctx.usage.cost_breakdown.get(bucket, 0.0) + float(amount)
+        await self.emit("usage.updated", usage=ctx.usage.model_dump() if ctx.usage else None)
         await self.emit("llm.succeeded", model=model)
+
+        # Cost-budget post-call check.
+        if (
+            max_cost_usd is not None
+            and ctx.usage is not None
+            and ctx.usage.cost_usd is not None
+            and ctx.usage.cost_usd > max_cost_usd
+        ):
+            raise BudgetExhausted(
+                f"cost budget exhausted: {ctx.usage.cost_usd:.4f} > {max_cost_usd:.4f}",
+                kind="cost",
+                current=ctx.usage.cost_usd,
+                limit=max_cost_usd,
+            )
+        # If the provider reported no cost mid-run (cost_usd went None),
+        # emit budget.cost_skipped exactly once so callers notice.
+        if (
+            max_cost_usd is not None
+            and ctx.usage is not None
+            and ctx.usage.cost_usd is None
+            and not ctx.scratch.get("__cost_skipped_emitted__")
+        ):
+            await self.emit(
+                "budget.cost_skipped",
+                limit=max_cost_usd,
+                reason="cost_unavailable",
+            )
+            ctx.scratch["__cost_skipped_emitted__"] = True
+
         return response.output_text
 
     def compose_system_prompt(self, base_prompt: str) -> str:
@@ -188,3 +342,47 @@ class PatternPlugin(BasePlugin):
                 metadata=dict(metadata or {}),
             )
         )
+
+    async def finalize(
+        self,
+        raw: Any,
+        output_type: type[BaseModel] | None,
+    ) -> Any:
+        """Coerce and validate the pattern's raw output.
+
+        Default behavior:
+          - output_type is None → return raw unchanged.
+          - output_type present → call output_type.model_validate(raw).
+        Overriders may pre-process raw before delegating to super().finalize(...).
+        """
+        if output_type is None:
+            return raw
+        try:
+            return output_type.model_validate(raw)
+        except ValidationError as exc:
+            raise ModelRetryError(
+                self._format_validation_error(exc),
+                validation_error=exc,
+            )
+
+    def _format_validation_error(self, exc: "ValidationError") -> str:
+        lines = ["The output did not match the expected schema:"]
+        for err in exc.errors():
+            loc = ".".join(str(part) for part in err.get("loc", ()))
+            msg = err.get("msg", "invalid")
+            lines.append(f"- {loc or '(root)'}: {msg}")
+        return "\n".join(lines)
+
+    def _inject_validation_correction(self) -> None:
+        err = self.context.scratch.pop("last_validation_error", None) if self.context else None
+        if err is None:
+            return
+        self.context.transcript.append({
+            "role": "system",
+            "content": (
+                f"Your previous final output failed validation "
+                f"(attempt {err['attempt']}): {err['message']}\n"
+                f"Expected schema: {json.dumps(err['expected_schema'], indent=2)}\n"
+                f"Please produce a corrected final output."
+            ),
+        })

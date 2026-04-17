@@ -116,7 +116,7 @@ async def test_chain_memory_loads_memories_and_runs_in_expected_order(monkeypatc
         _ = (kind, ref)
         return loaded.pop(0)
 
-    monkeypatch.setattr("openagents.plugins.loader._load_plugin", _fake_load_plugin)
+    monkeypatch.setattr("openagents.plugins.loader.load_plugin", _fake_load_plugin)
 
     memory = ChainMemory(
         {
@@ -149,3 +149,20 @@ async def test_chain_memory_loads_memories_and_runs_in_expected_order(monkeypatc
 def test_chain_memory_requires_memories_config():
     with pytest.raises(ValueError, match="requires 'memories' config list"):
         ChainMemory({"memories": []})
+
+
+def test_filesystem_execution_policy_warns_on_unknown_config_keys(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="openagents.interfaces.typed_config"):
+        policy = FilesystemExecutionPolicy(
+            {"deny_tools": ["delete_file"], "totally_unknown": 1}
+        )
+
+    assert policy._deny_tools == {"delete_file"}
+    assert any(
+        "unknown config keys" in r.message
+        and "FilesystemExecutionPolicy" in r.message
+        and "totally_unknown" in r.message
+        for r in caplog.records
+    )

@@ -12,6 +12,9 @@ from openagents.runtime.runtime import Runtime
 
 @pytest.mark.asyncio
 async def test_quickstart_builtin_echo_flow(monkeypatch):
+    monkeypatch.setenv("LLM_API_BASE", "http://stub.invalid")
+    monkeypatch.setenv("LLM_API_KEY", "stub-key")
+    monkeypatch.setenv("LLM_MODEL", "stub-model")
     config = load_config(Path("examples/quickstart/agent.json"))
     monkeypatch.setattr(llm_registry, "create_llm_client", lambda llm: MockLLMClient())
     runtime = Runtime(config)
@@ -31,6 +34,9 @@ async def test_quickstart_builtin_echo_flow(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_builtin_react_tool_call_flow(monkeypatch):
+    monkeypatch.setenv("LLM_API_BASE", "http://stub.invalid")
+    monkeypatch.setenv("LLM_API_KEY", "stub-key")
+    monkeypatch.setenv("LLM_MODEL", "stub-model")
     config = load_config(Path("examples/quickstart/agent.json"))
     monkeypatch.setattr(llm_registry, "create_llm_client", lambda llm: MockLLMClient())
     runtime = Runtime(config)
@@ -82,3 +88,35 @@ async def test_window_buffer_trims_by_window_size():
     state = await runtime.session_manager.get_state("w")
     assert len(state["memory_buffer"]) == 2
     assert [row["input"] for row in state["memory_buffer"]] == ["second", "third"]
+
+
+def test_buffer_memory_warns_on_unknown_config_keys(caplog):
+    import logging
+
+    from openagents.plugins.builtin.memory.buffer import BufferMemory
+
+    with caplog.at_level(logging.WARNING, logger="openagents.interfaces.typed_config"):
+        plugin = BufferMemory({"state_key": "ok", "totally_unknown": 1})
+
+    assert plugin.cfg.state_key == "ok"
+    assert any(
+        "unknown config keys" in r.message and "totally_unknown" in r.message
+        for r in caplog.records
+    )
+
+
+def test_window_buffer_memory_warns_on_unknown_config_keys(caplog):
+    import logging
+
+    from openagents.plugins.builtin.memory.window_buffer import WindowBufferMemory
+
+    with caplog.at_level(
+        logging.WARNING, logger="openagents.plugins.builtin.memory.window_buffer"
+    ):
+        plugin = WindowBufferMemory({"window_size": 5, "totally_unknown": 1})
+
+    assert plugin.window_size() == 5
+    assert any(
+        "unknown config keys" in r.message and "totally_unknown" in r.message
+        for r in caplog.records
+    )

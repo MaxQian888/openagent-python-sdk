@@ -6,22 +6,43 @@ import json
 import logging
 from typing import Any
 
+from pydantic import BaseModel
+
 from openagents.interfaces.capabilities import PATTERN_EXECUTE, PATTERN_REACT
 from openagents.interfaces.pattern import PatternPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 logger = logging.getLogger(__name__)
 
 
-class ReflexionPattern(PatternPlugin):
+class ReflexionPattern(TypedConfigPluginMixin, PatternPlugin):
     """Reflexion pattern: execute, reflect on results, retry if needed.
 
-    After each tool result, LLM reflects on whether the task is complete
-    or needs retry with adjusted approach.
+    What:
+        After each tool result the LLM reflects on whether the task is
+        complete; if not, it adjusts approach and retries up to
+        ``max_retries`` times. Useful for tasks where the first
+        attempt is often wrong but recoverable.
+
+    Usage:
+        ``{"type": "reflexion", "config": {"max_steps": 16,
+        "max_retries": 2, "step_timeout_ms": 30000}}``
+
+    Depends on:
+        - ``RunContext.llm_client`` for execution + reflection
+        - ``RunContext.tools`` for tool dispatch
+        - ``RunContext.event_bus`` for tool/llm/usage events
     """
+
+    class Config(BaseModel):
+        max_steps: int = 16
+        step_timeout_ms: int = 30000
+        max_retries: int = 2
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={PATTERN_EXECUTE, PATTERN_REACT})
-        self._max_retries = config.get("max_retries", 2) if config else 2
+        self._init_typed_config()
+        self._max_retries = self.cfg.max_retries
 
     # Default implementations
 
@@ -58,13 +79,15 @@ class ReflexionPattern(PatternPlugin):
     # Pattern-specific methods
 
     def _max_steps(self) -> int:
-        max_steps = self.config.get("max_steps", 16)
+        # Read from self.config (raw dict) to honor post-init runtime
+        # budget overrides applied via DefaultRuntime._apply_runtime_budget.
+        max_steps = self.config.get("max_steps", self.cfg.max_steps)
         if isinstance(max_steps, int) and max_steps > 0:
             return max_steps
         return 16
 
     def _step_timeout_ms(self) -> int:
-        timeout = self.config.get("step_timeout_ms", 30000)
+        timeout = self.config.get("step_timeout_ms", self.cfg.step_timeout_ms)
         if isinstance(timeout, int) and timeout > 0:
             return timeout
         return 30000
@@ -192,6 +215,7 @@ class ReflexionPattern(PatternPlugin):
 
     async def execute(self) -> Any:
         """Execute with reflection after each step."""
+        self._inject_validation_correction()
         ctx = self.context
         max_steps = self._max_steps()
         retries = 0

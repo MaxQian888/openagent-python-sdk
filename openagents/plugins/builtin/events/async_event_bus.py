@@ -5,6 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Awaitable, Callable
 
+from pydantic import BaseModel
+
+from openagents.interfaces.event_taxonomy import EVENT_SCHEMAS
 from openagents.interfaces.events import (
     EVENT_EMIT,
     EVENT_HISTORY,
@@ -12,25 +15,43 @@ from openagents.interfaces.events import (
     EventBusPlugin,
     RuntimeEvent,
 )
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 logger = logging.getLogger("openagents")
 
 
-class AsyncEventBus(EventBusPlugin):
+class AsyncEventBus(TypedConfigPluginMixin, EventBusPlugin):
     """Async in-memory event bus with history.
 
-    Events are stored in memory and can be queried.
-    Use for single-instance deployments or testing.
+    What:
+        Stores events in a bounded ring buffer and dispatches to
+        per-name and ``*`` wildcard subscribers. Performs the
+        advisory schema check from
+        :data:`openagents.interfaces.event_taxonomy.EVENT_SCHEMAS`
+        on each emit and logs a warning on missing required keys.
+        Default for single-instance deployments and test suites.
+
+    Usage:
+        ``{"events": {"type": "async", "config": {"max_history":
+        10000}}}``
+
+    Depends on:
+        - :data:`openagents.interfaces.event_taxonomy.EVENT_SCHEMAS`
+          for the advisory payload check
     """
+
+    class Config(BaseModel):
+        max_history: int = 10_000
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(
             config=config or {},
             capabilities={EVENT_SUBSCRIBE, EVENT_EMIT, EVENT_HISTORY},
         )
+        self._init_typed_config()
         self._subscribers: dict[str, list[Callable[[RuntimeEvent], Awaitable[None] | None]]] = {}
         self._history: list[RuntimeEvent] = []
-        self._max_history: int = config.get("max_history", 10000) if config else 10000
+        self._max_history: int = self.cfg.max_history
 
     @property
     def history(self) -> list[RuntimeEvent]:
@@ -42,7 +63,24 @@ class AsyncEventBus(EventBusPlugin):
         self._subscribers.setdefault(event_name, []).append(handler)
 
     async def emit(self, event_name: str, **payload: Any) -> RuntimeEvent:
-        """Emit an event."""
+        """Emit an event.
+
+        For declared events (see
+        :data:`openagents.interfaces.event_taxonomy.EVENT_SCHEMAS`),
+        missing required payload keys produce a ``logger.warning``;
+        delivery to subscribers proceeds unchanged. Custom event
+        names not present in the taxonomy are emitted without checks.
+        """
+        schema = EVENT_SCHEMAS.get(event_name)
+        if schema is not None:
+            missing = [k for k in schema.required_payload if k not in payload]
+            if missing:
+                logger.warning(
+                    "event '%s' missing required payload keys %s "
+                    "(declared in event_taxonomy.EVENT_SCHEMAS)",
+                    event_name,
+                    missing,
+                )
         event = RuntimeEvent(name=event_name, payload=payload)
         self._history.append(event)
 

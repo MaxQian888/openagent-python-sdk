@@ -11,7 +11,12 @@ from openagents.interfaces.capabilities import TOOL_INVOKE
 
 
 class CalcTool(ToolPlugin):
-    """Simple calculator for basic operations."""
+    """Simple calculator for basic operations.
+
+    What: parse an arithmetic expression with ``ast.parse(mode='eval')`` and walk it with a small whitelist of operators (no name resolution, no calls).
+    Usage: ``{"id": "calc", "type": "calc"}``; invoke with ``{"expression": "2 + 3 * 4"}``.
+    Depends on: stdlib ``ast`` and ``operator``.
+    """
 
     name = "calc"
     description = "Evaluate a mathematical expression and return the result."
@@ -81,7 +86,12 @@ class CalcTool(ToolPlugin):
 
 
 class PercentageTool(ToolPlugin):
-    """Percentage calculations."""
+    """Percentage calculations.
+
+    What: compute "X% of value", "value increased by X%", or "value decreased by X%".
+    Usage: ``{"id": "percent", "type": "percentage"}``; invoke with ``{"value": 200, "percent": 15, "operation": "of"}``.
+    Depends on: nothing.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -115,7 +125,12 @@ class PercentageTool(ToolPlugin):
 
 
 class MinMaxTool(ToolPlugin):
-    """Find min/max in numbers or list."""
+    """Find min/max in numbers or list.
+
+    What: compute min/max/sum/avg/median over a list or comma-separated string of numbers.
+    Usage: ``{"id": "minmax", "type": "min_max"}``; invoke with ``{"numbers": [1, 2, 3], "action": "min"}``.
+    Depends on: nothing.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})

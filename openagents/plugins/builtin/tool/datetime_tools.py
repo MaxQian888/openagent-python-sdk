@@ -11,7 +11,12 @@ from openagents.interfaces.capabilities import TOOL_INVOKE
 
 
 class CurrentTimeTool(ToolPlugin):
-    """Get current datetime."""
+    """Get current datetime.
+
+    What: return the current wall-clock time in ISO/timestamp/formatted forms; honors timezone if pytz available.
+    Usage: ``{"id": "now", "type": "current_time"}``; invoke with ``{"timezone": "UTC"}``.
+    Depends on: stdlib ``datetime``; optional ``pytz`` for non-UTC.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -42,7 +47,12 @@ class CurrentTimeTool(ToolPlugin):
 
 
 class DateParseTool(ToolPlugin):
-    """Parse various date string formats."""
+    """Parse various date string formats.
+
+    What: try a fixed list of common date formats and return the first parseable representation.
+    Usage: ``{"id": "date_parse", "type": "date_parse"}``; invoke with ``{"date": "2024-01-15"}``.
+    Depends on: stdlib ``datetime.strptime``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -80,7 +90,12 @@ class DateParseTool(ToolPlugin):
 
 
 class DateDiffTool(ToolPlugin):
-    """Calculate difference between two dates."""
+    """Calculate difference between two dates.
+
+    What: parse two dates and report the absolute difference in days/hours/minutes/seconds.
+    Usage: ``{"id": "date_diff", "type": "date_diff"}``; invoke with ``{"date1": "...", "date2": "...", "unit": "days"}``.
+    Depends on: stdlib ``datetime``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})

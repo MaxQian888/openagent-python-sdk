@@ -1,6 +1,6 @@
 [project]
 name = "io-openagent-sdk"
-version = "0.2.0"
+version = "0.3.0"
 description = "Config-as-code agent SDK"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,6 +14,7 @@ dev = [
     "coverage[toml]>=7.6.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "io-openagent-sdk[rich]",
 ]
 mcp = [
     "mcp>=1.0.0",
@@ -25,9 +26,27 @@ openai = [
     "httpx>=0.27.0",
     "openai>=1.0.0",
 ]
-all = [
-    "io-openagent-sdk[mcp,mem0,openai,dev]",
+otel = [
+    "opentelemetry-api>=1.25.0",
 ]
+rich = [
+    "rich>=13.7.0",
+]
+sqlite = [
+    "aiosqlite>=0.20.0",
+]
+tokenizers = [
+    "tiktoken>=0.7.0",
+]
+yaml = [
+    "pyyaml>=6.0",
+]
+all = [
+    "io-openagent-sdk[mcp,mem0,openai,otel,rich,sqlite,dev,tokenizers,yaml]",
+]
+
+[project.scripts]
+openagents = "openagents.cli.main:main"
 
 [build-system]
 requires = ["setuptools>=68.0.0"]
@@ -44,10 +63,19 @@ testpaths = ["tests"]
 source = ["openagents"]
 
 [tool.coverage.report]
-fail_under = 90
+fail_under = 92
 show_missing = true
 skip_covered = true
 omit = [
     "openagents/plugins/builtin/memory/mem0_memory.py",
     "openagents/plugins/builtin/tool/mcp_tool.py",
+    "openagents/plugins/builtin/session/sqlite_backed.py",
+    "openagents/plugins/builtin/events/otel_bridge.py",
+]
+
+[dependency-groups]
+dev = [
+    "aiohttp>=3.13.5",
+    "opentelemetry-sdk>=1.41.0",
+    "pytest-timeout>=2.4.0",
 ]

@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
+
+
+logger = logging.getLogger("openagents.llm")
 
 
 def _parse_structured_output(
@@ -96,7 +100,138 @@ class LLMChunk:
     usage: LLMUsage | None = None
 
 
+@dataclass
+class LLMCostBreakdown:
+    input: float = 0.0
+    output: float = 0.0
+    cached_read: float = 0.0
+    cached_write: float = 0.0
+
+    @property
+    def total(self) -> float:
+        return self.input + self.output + self.cached_read + self.cached_write
+
+
+def compute_cost(
+    *,
+    input_tokens_non_cached: int,
+    output_tokens: int,
+    cached_read_tokens: int,
+    cached_write_tokens: int,
+    rates: "LLMPricing",
+) -> LLMCostBreakdown | None:
+    """Compute per-call cost. Return None if any required rate is missing."""
+    if rates is None:
+        return None
+
+    def _rate(value: float | None, tokens: int) -> float | None:
+        if tokens <= 0:
+            return 0.0
+        if value is None:
+            return None
+        return (tokens / 1_000_000.0) * value
+
+    input_cost = _rate(rates.input, input_tokens_non_cached)
+    output_cost = _rate(rates.output, output_tokens)
+    cached_read_cost = _rate(rates.cached_read, cached_read_tokens)
+    cached_write_cost = _rate(rates.cached_write, cached_write_tokens)
+
+    for part in (input_cost, output_cost, cached_read_cost, cached_write_cost):
+        if part is None:
+            return None
+    return LLMCostBreakdown(
+        input=input_cost,
+        output=output_cost,
+        cached_read=cached_read_cost,
+        cached_write=cached_write_cost,
+    )
+
+
 class LLMClient:
+    provider_name: str = "unknown"
+    model_id: str = "unknown"
+
+    price_per_mtok_input: float | None = None
+    price_per_mtok_output: float | None = None
+    price_per_mtok_cached_read: float | None = None
+    price_per_mtok_cached_write: float | None = None
+
+    def count_tokens(self, text: str) -> int:
+        """Approximate token count using a provider-native tokenizer.
+
+        Default: len(text) // 4 with a one-time WARN per client instance.
+        Providers override when a real tokenizer is available.
+        """
+        if not getattr(self, "_count_tokens_warned", False):
+            logger.warning(
+                "LLMClient.count_tokens fallback (len//4) active for %s/%s; "
+                "token budgets will be approximate.",
+                self.provider_name,
+                self.model_id,
+            )
+            self._count_tokens_warned = True
+        return max(1, len(text or "") // 4)
+
+    def _effective_pricing(self, overrides: "LLMPricing | None") -> "LLMPricing":
+        from openagents.config.schema import LLMPricing
+
+        merged = LLMPricing(
+            input=self.price_per_mtok_input,
+            output=self.price_per_mtok_output,
+            cached_read=self.price_per_mtok_cached_read,
+            cached_write=self.price_per_mtok_cached_write,
+        )
+        if overrides is None:
+            return merged
+        for field_name in ("input", "output", "cached_read", "cached_write"):
+            value = getattr(overrides, field_name)
+            if value is not None:
+                setattr(merged, field_name, value)
+        return merged
+
+    def _compute_cost_for(
+        self,
+        *,
+        usage: LLMUsage,
+        overrides: "LLMPricing | None",
+    ) -> LLMUsage:
+        """Attach cost_usd and cost_breakdown onto usage.metadata."""
+        cached_read = int(
+            usage.metadata.get(
+                "cache_read_input_tokens",
+                usage.metadata.get("cached_tokens", 0),
+            )
+            or 0
+        )
+        cached_write = int(usage.metadata.get("cache_creation_input_tokens", 0) or 0)
+        non_cached_input = max(0, usage.input_tokens - cached_read - cached_write)
+        rates = self._effective_pricing(overrides)
+        breakdown = compute_cost(
+            input_tokens_non_cached=non_cached_input,
+            output_tokens=usage.output_tokens,
+            cached_read_tokens=cached_read,
+            cached_write_tokens=cached_write,
+            rates=rates,
+        )
+        merged_meta = dict(usage.metadata)
+        if breakdown is None:
+            merged_meta["cost_usd"] = None
+            merged_meta["cost_breakdown"] = {}
+        else:
+            merged_meta["cost_usd"] = breakdown.total
+            merged_meta["cost_breakdown"] = {
+                "input": breakdown.input,
+                "output": breakdown.output,
+                "cached_read": breakdown.cached_read,
+                "cached_write": breakdown.cached_write,
+            }
+        return LLMUsage(
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            total_tokens=usage.total_tokens,
+            metadata=merged_meta,
+        )
+
     async def generate(
         self,
         *,

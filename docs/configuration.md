@@ -111,6 +111,28 @@ agent 级 selector 至少要提供一个 `type` 或 `impl`。
 当前 builtin：
 
 - `in_memory`
+- `jsonl_file`
+- `sqlite`（可选 extra：`uv sync --extra sqlite`）
+
+`sqlite` 配置示例（每个 mutation 一行，per-session asyncio.Lock 串行写、
+WAL 模式让多 reader 可并发读，跨进程的查询直接用 `sqlite3` CLI）：
+
+```json
+{
+  "session": {
+    "type": "sqlite",
+    "config": {
+      "db_path": ".sessions/agent.db",
+      "wal": true,
+      "synchronous": "NORMAL",
+      "busy_timeout_ms": 5000
+    }
+  }
+}
+```
+
+未装 `aiosqlite` 就用 `type: "sqlite"`，构造时会抛 `PluginLoadError`
+并附带 `Install the 'sqlite' extra: uv sync --extra sqlite` 提示。
 
 ### `events`
 
@@ -126,6 +148,31 @@ agent 级 selector 至少要提供一个 `type` 或 `impl`。
 当前 builtin：
 
 - `async`
+- `file_logging`
+- `otel_bridge`（可选 extra：`uv sync --extra otel`）
+
+`otel_bridge` 包另一个 inner bus，对每个 emit 创建一个一次性的 OTel
+span，名为 `openagents.<event_name>`，payload 各 key 平铺成 `oa.<key>`
+attribute（长 string 自动截断到 `max_attribute_chars`）。
+inner bus 总是先 emit，所以即便 OTel SDK 出问题也不会阻塞 subscribers。
+
+```json
+{
+  "events": {
+    "type": "otel_bridge",
+    "config": {
+      "inner": {"type": "async"},
+      "tracer_name": "openagents",
+      "include_events": ["tool.*", "llm.*"],
+      "max_attribute_chars": 4096
+    }
+  }
+}
+```
+
+`include_events` 用 `fnmatch` 风格通配，`None` 表示不过滤。host 进程
+需自行通过 `opentelemetry-sdk` 配置一个 TracerProvider；没配置时
+OTel API 会 no-op，bridge 等于零成本。
 
 ### `skills`
 
@@ -144,6 +191,24 @@ agent 级 selector 至少要提供一个 `type` 或 `impl`。
 当前 builtin：
 
 - `local`
+
+### `logging`（可选）
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `auto_configure` | bool | `false` | 是否让 `Runtime.__init__` 自动调 `configure()` |
+| `level` | str | `"INFO"` | `openagents.*` 根 level |
+| `per_logger_levels` | dict[str, str] | `{}` | 按 logger 名覆盖 level，如 `{"openagents.llm": "DEBUG"}` |
+| `pretty` | bool | `false` | 启用 rich 渲染（需要 `[rich]` extra） |
+| `stream` | `"stdout"` \| `"stderr"` | `"stderr"` | 输出流 |
+| `include_prefixes` | list[str] \| null | `null` | logger 白名单（`null` = 允许所有） |
+| `exclude_prefixes` | list[str] | `[]` | logger 黑名单 |
+| `redact_keys` | list[str] | `["api_key", "authorization", "token", "secret", "password"]` | 脱敏 key 名（大小写不敏感） |
+| `max_value_length` | int | `500` | 字符串 value 截断长度 |
+| `show_time` | bool | `true` | 是否显示时间列（rich 模式） |
+| `show_path` | bool | `false` | 是否显示代码路径（rich 模式） |
+
+如果该 section 缺失或 `auto_configure=false`，SDK 不会修改任何 logging 配置。
 
 ## 4. AgentDefinition
 

@@ -116,7 +116,7 @@ async def test_exports_registry_and_capability_helpers_cover_public_surface():
     assert supports(plugin, TOOL_INVOKE) is True
     assert StopReason.COMPLETED.value == "completed"
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-    assert pyproject["project"]["version"] == "0.2.0"
+    assert pyproject["project"]["version"] == "0.3.0"
 
 
 @pytest.mark.asyncio
@@ -193,6 +193,7 @@ async def test_pattern_plugin_setup_call_tool_call_llm_compose_prompt_and_artifa
         "tool.called",
         "tool.failed",
         "llm.called",
+        "usage.updated",
         "llm.succeeded",
     ]
 
@@ -295,3 +296,17 @@ async def test_llm_base_and_registry_cover_normalization_merge_and_factory_paths
         create_llm_client(LLMOptions(provider="openai_compatible"))
     with pytest.raises(ConfigError):
         create_llm_client(LLMOptions(provider="unsupported"))
+
+
+def test_new_030_exports():
+    from openagents import (
+        ModelRetryError,
+        OutputValidationError,
+        RunStreamChunk,
+        RunStreamChunkKind,
+    )
+
+    assert RunStreamChunk.__name__ == "RunStreamChunk"
+    assert RunStreamChunkKind.RUN_FINISHED.value == "run.finished"
+    assert issubclass(OutputValidationError, Exception)
+    assert issubclass(ModelRetryError, Exception)

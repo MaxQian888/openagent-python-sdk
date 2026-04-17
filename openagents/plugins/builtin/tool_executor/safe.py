@@ -5,24 +5,53 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from pydantic import BaseModel
+
 from openagents.errors.exceptions import ToolError, ToolTimeoutError
 from openagents.interfaces.tool import ToolExecutionRequest, ToolExecutionResult, ToolExecutorPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
-class SafeToolExecutor(ToolExecutorPlugin):
-    """Builtin tool executor with basic validation and timeout handling."""
+class SafeToolExecutor(TypedConfigPluginMixin, ToolExecutorPlugin):
+    """Builtin tool executor with basic validation and timeout handling.
+
+    What:
+        Runs ``tool.invoke`` under ``asyncio.wait_for`` with the
+        per-request or default timeout. Calls ``tool.validate_params``
+        first if present and short-circuits with a ToolError on
+        failure. Returns a ToolExecutionResult with timeout
+        metadata; never raises directly.
+
+    Usage:
+        ``{"tool_executor": {"type": "safe", "config":
+        {"default_timeout_ms": 30000, "allow_stream_passthrough":
+        true}}}``
+
+    Depends on:
+        - the wrapped tool's ``invoke`` / ``invoke_stream``
+        - per-tool ``execution_spec().default_timeout_ms`` (optional)
+    """
+
+    class Config(BaseModel):
+        default_timeout_ms: int = 30_000
+        allow_stream_passthrough: bool = True
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities=set())
-        self._default_timeout_ms = int(self.config.get("default_timeout_ms", 30_000))
-        self._allow_stream_passthrough = bool(self.config.get("allow_stream_passthrough", True))
+        self._init_typed_config()
+        self._default_timeout_ms = self.cfg.default_timeout_ms
+        self._allow_stream_passthrough = self.cfg.allow_stream_passthrough
 
     async def execute(self, request: ToolExecutionRequest) -> ToolExecutionResult:
         validator = getattr(request.tool, "validate_params", None)
         if callable(validator):
             is_valid, error = validator(request.params or {})
             if not is_valid:
-                exc = ToolError(error or f"Invalid params for tool '{request.tool_id}'", tool_name=request.tool_id)
+                exc = ToolError(
+                    error or f"Invalid params for tool '{request.tool_id}'",
+                    tool_name=request.tool_id,
+                    hint=f"Inspect tool '{request.tool_id}' schema via tool.schema() to see required fields",
+                )
                 return ToolExecutionResult(
                     tool_id=request.tool_id,
                     success=False,

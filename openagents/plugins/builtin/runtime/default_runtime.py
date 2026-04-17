@@ -8,6 +8,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel
+
 from openagents.interfaces.capabilities import (
     MEMORY_INJECT,
     MEMORY_WRITEBACK,
@@ -44,7 +46,9 @@ from openagents.interfaces.runtime import (
 from openagents.errors.exceptions import (
     BudgetExhausted,
     MaxStepsExceeded,
+    ModelRetryError,
     OpenAgentsError,
+    OutputValidationError,
     PatternError,
 )
 from openagents.interfaces.session import SessionArtifact
@@ -58,6 +62,7 @@ from openagents.interfaces.tool import (
     ToolExecutor,
     ToolExecutorPlugin,
 )
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 logger = logging.getLogger("openagents")
 
@@ -176,7 +181,15 @@ class _BoundTool:
             return get_spec()
         return ToolExecutionSpec()
 
-    async def invoke(self, params: dict[str, Any], context: Any) -> Any:
+    async def invoke(self, params: dict[str, Any], context: Any) -> ToolExecutionResult:
+        """Return the full :class:`ToolExecutionResult` so executor metadata
+        (retry counts, timeouts, policy decisions) survives to events.
+
+        The base :class:`PatternPlugin.call_tool` unwraps via
+        :func:`unwrap_tool_result` for backward-compatible data access
+        and propagates ``executor_metadata`` on the ``tool.succeeded``
+        event payload.
+        """
         budget = getattr(getattr(context, "run_request", None), "budget", None)
         usage = getattr(context, "usage", None)
         if budget is not None and budget.max_tool_calls is not None and usage is not None:
@@ -208,7 +221,7 @@ class _BoundTool:
             usage = getattr(context, "usage", None)
             if usage is not None:
                 usage.tool_calls += 1
-            return result.data
+            return result
         if result.exception is not None:
             raise result.exception
         raise RuntimeError(result.error or f"Tool '{self._tool_id}' failed")
@@ -250,14 +263,39 @@ class _BoundTool:
         return getattr(self._tool, name)
 
 
-class DefaultRuntime(RuntimePlugin):
+class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
     """Default runtime implementation.
 
-    Orchestrates agent execution with:
-    - Session isolation and locking
-    - Event lifecycle management
-    - Memory inject/execute/writeback flow
+    What:
+        Owns the per-run orchestration: acquires the session lock,
+        runs ``context_assembler.assemble``, rebinds tools through
+        ``execution_policy + tool_executor``, then drives
+        ``pattern.setup`` / ``memory.inject`` / ``pattern.execute`` /
+        ``memory.writeback``, finally persists the transcript and
+        artifacts. Emits the full set of lifecycle events declared in
+        :data:`openagents.interfaces.event_taxonomy.EVENT_SCHEMAS`.
+
+    Usage:
+        ``{"runtime": {"type": "default"}}``. Optional
+        per-dependency overrides under ``config.tool_executor``,
+        ``config.execution_policy``, ``config.context_assembler``,
+        ``config.followup_resolver``,
+        ``config.response_repair_policy``.
+
+    Depends on:
+        - ``EventBusPlugin`` (top-level ``events``) for emit
+        - ``SessionManagerPlugin`` (top-level ``session``) for state
+          and transcript persistence
+        - the agent's ``memory`` / ``pattern`` / optional executor
+          and policy plugins
     """
+
+    class Config(BaseModel):
+        tool_executor: dict[str, Any] | None = None
+        execution_policy: dict[str, Any] | None = None
+        context_assembler: dict[str, Any] | None = None
+        followup_resolver: dict[str, Any] | None = None
+        response_repair_policy: dict[str, Any] | None = None
 
     def __init__(
         self,
@@ -267,6 +305,7 @@ class DefaultRuntime(RuntimePlugin):
             config=config or {},
             capabilities={RUNTIME_RUN},
         )
+        self._init_typed_config()
         self._event_bus: EventBusPlugin | None = None
         self._session_manager: Any | None = None
         self._llm_clients: dict[str, Any | None] = {}
@@ -301,7 +340,16 @@ class DefaultRuntime(RuntimePlugin):
 
         agent = agents_by_id.get(request.agent_id)
         if agent is None:
-            raise ValueError(f"Unknown agent id: '{request.agent_id}'")
+            from openagents.errors.suggestions import near_match
+
+            available = sorted(agents_by_id.keys())
+            guess = near_match(request.agent_id, available)
+            extra = (
+                f" Did you mean '{guess}'?" if guess else ""
+            )
+            raise ValueError(
+                f"Unknown agent id: '{request.agent_id}'.{extra} Available: {available}"
+            )
 
         if agent_plugins is None:
             plugins = load_agent_plugins(agent)
@@ -314,6 +362,13 @@ class DefaultRuntime(RuntimePlugin):
             session_id=request.session_id,
             input_text=request.input_text,
             run_id=request.run_id,
+        )
+        await self._event_bus.emit(
+            "session.run.started",
+            agent_id=request.agent_id,
+            session_id=request.session_id,
+            run_id=request.run_id,
+            input_text=request.input_text,
         )
 
         llm_client = self._get_llm_client(agent)
@@ -343,10 +398,21 @@ class DefaultRuntime(RuntimePlugin):
                 )
 
                 session_state.pop("_runtime_last_output", None)
+                await self._event_bus.emit("context.assemble.started")
+                assemble_started_at = time.perf_counter()
                 assembly = await context_assembler.assemble(
                     request=request,
                     session_state=session_state,
                     session_manager=self._session_manager,
+                )
+                assemble_duration_ms = int(
+                    (time.perf_counter() - assemble_started_at) * 1000
+                )
+                await self._event_bus.emit(
+                    "context.assemble.completed",
+                    transcript_size=len(assembly.transcript),
+                    artifact_count=len(assembly.session_artifacts),
+                    duration_ms=assemble_duration_ms,
                 )
                 self._apply_runtime_budget(pattern=plugins.pattern, agent=agent)
                 bound_tools = self._bind_tools(plugins.tools, tool_executor, execution_policy)
@@ -379,7 +445,104 @@ class DefaultRuntime(RuntimePlugin):
                 self._enforce_duration_budget(request=request, started_at=started_at)
                 await self._run_memory_inject(agent=agent, memory=plugins.memory, pattern=plugins.pattern)
                 self._enforce_duration_budget(request=request, started_at=started_at)
-                result = await plugins.pattern.execute()
+
+                output_type = request.output_type
+                max_retries = (
+                    request.budget.max_validation_retries
+                    if request.budget is not None
+                    and request.budget.max_validation_retries is not None
+                    else 3
+                )
+                attempts = 0
+                raw = await plugins.pattern.execute()
+                self._enforce_duration_budget(request=request, started_at=started_at)
+                validation_exhausted: OutputValidationError | None = None
+
+                finalize_fn = getattr(plugins.pattern, "finalize", None)
+                if finalize_fn is None:
+                    # Duck-typed pattern without finalize hook: skip validation entirely.
+                    result = raw
+                    validation_exhausted = None
+                    # Fall through past the while loop (no retries needed).
+                    finalize_enabled = False
+                else:
+                    finalize_enabled = True
+
+                while finalize_enabled:
+                    try:
+                        result = await finalize_fn(raw, output_type)
+                        break
+                    except ModelRetryError as retry_exc:
+                        attempts += 1
+                        if max_retries is not None and attempts > max_retries:
+                            validation_exhausted = OutputValidationError(
+                                str(retry_exc),
+                                output_type=output_type,
+                                attempts=attempts,
+                                last_validation_error=retry_exc.validation_error,
+                            ).with_context(
+                                agent_id=request.agent_id,
+                                session_id=request.session_id,
+                                run_id=request.run_id,
+                            )
+                            break
+                        pattern_ctx = getattr(plugins.pattern, "context", None)
+                        if pattern_ctx is not None:
+                            pattern_ctx.scratch["last_validation_error"] = {
+                                "attempt": attempts,
+                                "message": str(retry_exc),
+                                "expected_schema": (
+                                    output_type.model_json_schema() if output_type is not None else {}
+                                ),
+                            }
+                        await self._event_bus.emit(
+                            "validation.retry",
+                            agent_id=request.agent_id,
+                            session_id=request.session_id,
+                            run_id=request.run_id,
+                            attempt=attempts,
+                            error=str(retry_exc),
+                        )
+                        raw = await plugins.pattern.execute()
+                        self._enforce_duration_budget(request=request, started_at=started_at)
+
+                if validation_exhausted is not None:
+                    await self._append_transcript(
+                        request=request,
+                        final_output=str(validation_exhausted),
+                        stop_reason=RUN_STOP_FAILED,
+                        is_error=True,
+                    )
+                    await self._persist_artifacts(request.session_id, artifacts)
+                    await self._event_bus.emit(
+                        RUN_FAILED,
+                        agent_id=request.agent_id,
+                        session_id=request.session_id,
+                        run_id=request.run_id,
+                        error=str(validation_exhausted),
+                    )
+                    await self._event_bus.emit(
+                        "session.run.completed",
+                        agent_id=request.agent_id,
+                        session_id=request.session_id,
+                        run_id=request.run_id,
+                        stop_reason=RUN_STOP_FAILED,
+                        duration_ms=int((time.perf_counter() - started_at) * 1000),
+                    )
+                    return RunResult(
+                        run_id=request.run_id,
+                        final_output=None,
+                        stop_reason=RUN_STOP_FAILED,
+                        usage=usage,
+                        artifacts=list(artifacts),
+                        exception=validation_exhausted,
+                        error=str(validation_exhausted),
+                        metadata={
+                            "agent_id": request.agent_id,
+                            "session_id": request.session_id,
+                        },
+                    )
+
                 self._enforce_duration_budget(request=request, started_at=started_at)
                 await self._run_memory_writeback(agent=agent, memory=plugins.memory, pattern=plugins.pattern)
                 self._enforce_duration_budget(request=request, started_at=started_at)
@@ -418,6 +581,14 @@ class DefaultRuntime(RuntimePlugin):
                     run_id=request.run_id,
                     result=result,
                 )
+                await self._event_bus.emit(
+                    "session.run.completed",
+                    agent_id=request.agent_id,
+                    session_id=request.session_id,
+                    run_id=request.run_id,
+                    stop_reason=RUN_STOP_COMPLETED,
+                    duration_ms=int((time.perf_counter() - started_at) * 1000),
+                )
                 return run_result
         except Exception as exc:
             wrapped_exc = exc
@@ -446,6 +617,14 @@ class DefaultRuntime(RuntimePlugin):
                 session_id=request.session_id,
                 run_id=request.run_id,
                 error=str(wrapped_exc),
+            )
+            await self._event_bus.emit(
+                "session.run.completed",
+                agent_id=request.agent_id,
+                session_id=request.session_id,
+                run_id=request.run_id,
+                stop_reason=stop_reason,
+                duration_ms=int((time.perf_counter() - started_at) * 1000),
             )
             run_result = RunResult(
                 run_id=request.run_id,
@@ -645,7 +824,7 @@ class DefaultRuntime(RuntimePlugin):
         return self._get_execution_policy()
 
     def _get_context_assembler(self) -> ContextAssemblerPlugin:
-        from openagents.plugins.builtin.context.summarizing import SummarizingContextAssembler
+        from openagents.plugins.builtin.context.truncating import TruncatingContextAssembler
 
         if self._context_assembler is not None:
             return self._context_assembler
@@ -654,7 +833,7 @@ class DefaultRuntime(RuntimePlugin):
             default_factory=_DefaultContextAssembler,
             builtin_factories={
                 "default": _DefaultContextAssembler,
-                "summarizing": SummarizingContextAssembler,
+                "truncating": TruncatingContextAssembler,
             },
             required_methods=("assemble", "finalize"),
         )
@@ -715,7 +894,9 @@ class DefaultRuntime(RuntimePlugin):
         builtin_factories: dict[str, Any],
         required_methods: tuple[str, ...],
     ) -> Any:
-        raw = self.config.get(key)
+        # Read through self.cfg so unknown top-level runtime config keys are
+        # surfaced via TypedConfigPluginMixin's warning.
+        raw = getattr(self.cfg, key, None)
         if raw is None:
             dependency = default_factory()
             self._bind_runtime_dependency(dependency)
@@ -826,12 +1007,19 @@ class DefaultRuntime(RuntimePlugin):
         if not supports(memory, MEMORY_INJECT):
             return
         context = pattern.context
+        await self._event_bus.emit("memory.inject.started")
         try:
             await memory.inject(context)
+            view = getattr(context, "memory_view", None)
+            view_size = len(view) if view is not None else 0
             await self._event_bus.emit(
                 MEMORY_INJECTED,
                 agent_id=context.agent_id,
                 session_id=context.session_id,
+            )
+            await self._event_bus.emit(
+                "memory.inject.completed",
+                view_size=view_size,
             )
         except Exception as exc:
             await self._event_bus.emit(
@@ -865,6 +1053,7 @@ class DefaultRuntime(RuntimePlugin):
         if not supports(memory, MEMORY_WRITEBACK):
             return
         context = pattern.context
+        await self._event_bus.emit("memory.writeback.started")
         try:
             await memory.writeback(context)
             await self._event_bus.emit(
@@ -872,6 +1061,7 @@ class DefaultRuntime(RuntimePlugin):
                 agent_id=context.agent_id,
                 session_id=context.session_id,
             )
+            await self._event_bus.emit("memory.writeback.completed")
         except Exception as exc:
             await self._event_bus.emit(
                 MEMORY_WRITEBACK_FAILED,

@@ -33,8 +33,16 @@ Quick Start:
 
 from .config.loader import load_config, load_config_dict
 from .config.schema import AppConfig
+from .errors.exceptions import (
+    ModelRetryError,
+    OutputValidationError,
+)
 from .plugins.builtin.skills.local import (
     LocalSkillsManager,
+)
+from .interfaces.runtime import (
+    RunStreamChunk,
+    RunStreamChunkKind,
 )
 from .interfaces.skills import SkillsPlugin, SessionSkillSummary
 from .interfaces.run_context import RunContext
@@ -132,4 +140,9 @@ __all__ = [
     "list_context_assemblers",
     "list_followup_resolvers",
     "list_response_repair_policies",
+    # 0.3.0 additions
+    "ModelRetryError",
+    "OutputValidationError",
+    "RunStreamChunk",
+    "RunStreamChunkKind",
 ]

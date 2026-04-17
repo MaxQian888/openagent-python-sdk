@@ -11,7 +11,12 @@ from openagents.interfaces.tool import ToolExecutionSpec, ToolPlugin
 
 
 class GrepFilesTool(ToolPlugin):
-    """Search for pattern in files using regex."""
+    """Search for pattern in files using regex.
+
+    What: pure-Python recursive regex search across files under a path; first 100 matches returned.
+    Usage: ``{"id": "grep_files", "type": "grep_files"}``; invoke with ``{"pattern": "...", "path": ".", "case_sensitive": true}``.
+    Depends on: local filesystem; Python ``re`` module.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -59,7 +64,12 @@ class GrepFilesTool(ToolPlugin):
 
 
 class RipgrepTool(ToolPlugin):
-    """Fast search using ripgrep (rg) if available."""
+    """Fast search using ripgrep (rg) if available.
+
+    What: shells out to ``rg --json`` for fast regex search; first 100 matches returned.
+    Usage: ``{"id": "ripgrep", "type": "ripgrep"}``; invoke with ``{"pattern": "...", "path": ".", "file_type": "py"}``.
+    Depends on: ``rg`` binary on PATH; local filesystem.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -120,7 +130,12 @@ class RipgrepTool(ToolPlugin):
 
 
 class JsonParseTool(ToolPlugin):
-    """Parse JSON string."""
+    """Parse JSON string.
+
+    What: parse a JSON string and return the deserialized value plus its Python type name.
+    Usage: ``{"id": "json_parse", "type": "json_parse"}``; invoke with ``{"text": "{...}"}``.
+    Depends on: stdlib ``json`` module.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -138,7 +153,12 @@ class JsonParseTool(ToolPlugin):
 
 
 class TextTransformTool(ToolPlugin):
-    """Transform text (upper, lower, title, etc)."""
+    """Transform text (upper, lower, title, etc).
+
+    What: apply one of upper/lower/title/capitalize/strip/reverse to a string.
+    Usage: ``{"id": "text_transform", "type": "text_transform"}``; invoke with ``{"text": "...", "operation": "lower"}``.
+    Depends on: nothing (stdlib).
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})

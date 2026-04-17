@@ -9,6 +9,22 @@ from openagents.interfaces.tool import ToolPlugin
 
 
 class BuiltinSearchTool(ToolPlugin):
+    """Search a tiny built-in document corpus by keyword score.
+
+    What:
+        Stub demo tool: scores three hard-coded snippets against the
+        whitespace-tokenized query and returns the top matches.
+        Useful for examples that need a "search" tool without
+        external dependencies.
+
+    Usage:
+        ``{"id": "search", "type": "builtin_search"}``; invoke with
+        ``{"query": "memory", "limit": 3}``.
+
+    Depends on:
+        - nothing (corpus is in-process).
+    """
+
     name = "builtin_search"
     description = "Search the built-in knowledge corpus for relevant documents."
 

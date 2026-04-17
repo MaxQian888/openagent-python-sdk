@@ -1,20 +1,44 @@
-"""Summarizing context assembler."""
+"""Truncating context assembler (count-based, no LLM involved)."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
+
 from openagents.interfaces.context import ContextAssemblerPlugin, ContextAssemblyResult
 
 
-class SummarizingContextAssembler(ContextAssemblerPlugin):
-    """Builtin context assembler that trims transcript and artifact history."""
+class TruncatingContextAssembler(ContextAssemblerPlugin):
+    """Builtin context assembler that trims transcript and artifact history.
+
+    What:
+        Pure count-based truncation. Keeps the last ``max_messages``
+        transcript entries and the last ``max_artifacts`` session
+        artifacts; emits a plain "[N earlier messages omitted]"
+        notice. Does NOT call an LLM. Renamed from
+        ``SummarizingContextAssembler`` in 0.3.0 because the previous
+        name misled users.
+
+    Usage:
+        ``{"context_assembler": {"type": "truncating", "config":
+        {"max_messages": 50, "max_artifacts": 20}}}``
+
+    Depends on:
+        - ``session_manager.load_messages`` / ``list_artifacts``
+    """
+
+    class Config(BaseModel):
+        max_messages: int = 20
+        max_artifacts: int = 10
+        include_summary_message: bool = True
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities=set())
-        self._max_messages = int(self.config.get("max_messages", 20))
-        self._max_artifacts = int(self.config.get("max_artifacts", 10))
-        self._include_summary_message = bool(self.config.get("include_summary_message", True))
+        cfg = self.Config.model_validate(self.config)
+        self._max_messages = cfg.max_messages
+        self._max_artifacts = cfg.max_artifacts
+        self._include_summary_message = cfg.include_summary_message
 
     async def assemble(
         self,
@@ -45,9 +69,11 @@ class SummarizingContextAssembler(ContextAssemblerPlugin):
             transcript=transcript,
             session_artifacts=artifacts,
             metadata={
-                "assembler": "summarizing",
+                "assembler": "truncating",
+                "strategy": "truncating",
                 "omitted_messages": omitted_messages,
                 "omitted_artifacts": omitted_artifacts,
+                "token_counter": "none",
             },
         )
 

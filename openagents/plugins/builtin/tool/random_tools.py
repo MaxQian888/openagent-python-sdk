@@ -11,7 +11,12 @@ from openagents.interfaces.capabilities import TOOL_INVOKE
 
 
 class RandomIntTool(ToolPlugin):
-    """Generate random integer."""
+    """Generate random integer.
+
+    What: ``random.randint(min, max)`` (single or batch up to 100).
+    Usage: ``{"id": "rand_int", "type": "random_int"}``; invoke with ``{"min": 0, "max": 100, "count": 1}``.
+    Depends on: stdlib ``random``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -34,7 +39,12 @@ class RandomIntTool(ToolPlugin):
 
 
 class RandomChoiceTool(ToolPlugin):
-    """Random choice from a list."""
+    """Random choice from a list.
+
+    What: ``random.choice`` or ``random.sample`` for batch picks without replacement.
+    Usage: ``{"id": "rand_choice", "type": "random_choice"}``; invoke with ``{"choices": ["a", "b"], "count": 1}``.
+    Depends on: stdlib ``random``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -54,7 +64,12 @@ class RandomChoiceTool(ToolPlugin):
 
 
 class UUIDTool(ToolPlugin):
-    """Generate UUID."""
+    """Generate UUID.
+
+    What: emit ``uuid4`` (default) or ``uuid1`` strings, single or batch up to 100.
+    Usage: ``{"id": "uuid", "type": "uuid"}``; invoke with ``{"version": 4, "count": 1}``.
+    Depends on: stdlib ``uuid``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
@@ -77,7 +92,12 @@ class UUIDTool(ToolPlugin):
 
 
 class RandomStringTool(ToolPlugin):
-    """Generate random string."""
+    """Generate random string.
+
+    What: pick characters from one of several built-in charsets (alphanumeric/alpha/numeric/hex/ascii).
+    Usage: ``{"id": "rand_str", "type": "random_string"}``; invoke with ``{"length": 16, "charset": "alphanumeric"}``.
+    Depends on: stdlib ``random``.
+    """
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})

@@ -1,5 +1,24 @@
 {
   "version": "1.0",
+  "events": {
+    "type": "rich_console",
+    "config": {
+      "inner": {"type": "async"},
+      "include_events": ["tool.called", "tool.succeeded", "llm.succeeded"],
+      "show_payload": false,
+      "redact_keys": ["api_key", "authorization"]
+    }
+  },
+  "logging": {
+    "auto_configure": true,
+    "pretty": true,
+    "level": "INFO",
+    "per_logger_levels": {
+      "openagents.llm": "DEBUG"
+    },
+    "redact_keys": ["api_key", "authorization", "token"],
+    "max_value_length": 500
+  },
   "agents": [
     {
       "id": "assistant",
@@ -19,9 +38,9 @@
       },
       "llm": {
         "provider": "anthropic",
-        "api_base": "https://api.minimax.chat/anthropic/v1",
-        "api_key_env": "MINIMAX_API_KEY",
-        "model": "MiniMax-M2.7",
+        "api_base": "${LLM_API_BASE}",
+        "api_key_env": "LLM_API_KEY",
+        "model": "${LLM_MODEL}",
         "temperature": 0
       },
       "tools": [

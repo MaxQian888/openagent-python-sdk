@@ -44,6 +44,7 @@ class ToolExecutionSpec(BaseModel):
     default_timeout_ms: int | None = None
     reads_files: bool = False
     writes_files: bool = False
+    supports_streaming: bool = False
 
 
 class PolicyDecision(BaseModel):

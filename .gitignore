@@ -10,4 +10,7 @@ __pycache__/
 *.env
 .coverage
 dist/
-
+examples/research_analyst/sessions/
+examples/production_coding_agent/outputs/*
+!examples/production_coding_agent/outputs/README.md
+.tmp

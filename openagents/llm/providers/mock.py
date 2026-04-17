@@ -3,12 +3,27 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from openagents.llm.base import LLMClient
 
+if TYPE_CHECKING:
+    from openagents.config.schema import LLMPricing
+
 
 class MockLLMClient(LLMClient):
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+        pricing: "LLMPricing | None" = None,
+    ) -> None:
+        _ = api_key  # mock ignores credentials
+        self.provider_name = "mock"
+        self.model_id = model or ""
+        self._pricing_overrides = pricing
+
     async def complete(
         self,
         *,
@@ -84,3 +99,7 @@ class MockLLMClient(LLMClient):
         values.setdefault("input", "")
         values.setdefault("history_count", history_count)
         return values
+
+
+# Alias for callers that prefer the shorter name.
+MockClient = MockLLMClient

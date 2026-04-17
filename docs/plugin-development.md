@@ -450,7 +450,174 @@ async def test_custom_tool_plugin():
 - `tests/fixtures/runtime_plugins.py`
 - `examples/production_coding_agent/`
 
-## 18. 继续阅读
+## 18. Typed Config
+
+新版插件推荐用 `TypedConfigPluginMixin` 为 `self.config` 生成强类型的 `self.cfg`。
+
+写法（必须把 mixin 放在 plugin ABC 之前，让 `super().__init__` 还能解析到 ABC）：
+
+```python
+from pydantic import BaseModel, Field
+
+from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK
+from openagents.interfaces.memory import MemoryPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
+
+
+class BufferMemory(TypedConfigPluginMixin, MemoryPlugin):
+    class Config(BaseModel):
+        state_key: str = "memory_buffer"
+        view_key: str = "history"
+        max_items: int | None = Field(default=None, gt=0)
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(
+            config=config or {},
+            capabilities={MEMORY_INJECT, MEMORY_WRITEBACK},
+        )
+        self._init_typed_config()
+
+    async def inject(self, context):
+        # Read typed fields off self.cfg
+        view_key = self.cfg.view_key
+        ...
+```
+
+要点：
+
+- `Config` 是嵌套 `pydantic.BaseModel`
+- `_init_typed_config()` 必须在 `super().__init__()` 之后显式调用
+- 未知 config 键不会报错，只会经 `openagents.interfaces.typed_config` 的 logger 发一条 warning，便于平滑迁移
+- 未来 0.4.x 可能会切到 `extra='forbid'` 严格模式
+
+## 19. Composing plugins
+
+写 combinator 类型 plugin（嵌套加载其它 plugin）的时候，用公开的 `load_plugin`：
+
+```python
+from openagents.config.schema import ToolExecutorRef
+from openagents.plugins.loader import load_plugin
+
+
+class MyRetryExecutor:
+    def __init__(self, config: dict[str, Any] | None = None):
+        ...
+        inner_ref = ToolExecutorRef(**config["inner"])
+        self._inner = load_plugin(
+            "tool_executor",
+            inner_ref,
+            required_methods=("execute", "execute_stream"),
+        )
+```
+
+`openagents.plugins.loader._load_plugin` 仍然可用，但会发 `DeprecationWarning`，
+计划在后续版本移除。所有 in-tree combinator（`memory.chain`, `tool_executor.retry`,
+`execution_policy.composite`, `events.file_logging`）都已迁到公开 API。
+
+## 20. 三段式 Docstring（Spec B WP4）
+
+所有内置插件类必须在类 docstring 里包含三个段落：
+
+```python
+class MyMemory(MemoryPlugin):
+    """One-line summary ending with a period.
+
+    What:
+        2-4 sentences describing what this plugin does and why
+        (the user-facing behavior).
+
+    Usage:
+        Configuration shape and a 1-2 line example:
+        ``{"type": "my_memory", "config": {"key": "value"}}``
+
+    Depends on:
+        - ``RunContext.state`` for X
+        - sibling plugin ``baz``
+        - external resource Y
+    """
+```
+
+`tests/unit/test_builtin_docstrings_are_three_section.py` 强制这一格式。
+工具类的 Usage / Depends on 段落可以一行带过；非工具类建议写完整。
+
+## 21. 错误 hint / docs_url（Spec B WP1）
+
+`OpenAgentsError`（含子类）支持可选 `hint=` / `docs_url=` 关键字参数，
+建议在用户可能因为典型错误（拼写、缺配置、找不到 ID）触发的位置带上：
+
+```python
+from openagents.errors.exceptions import PluginLoadError
+from openagents.errors.suggestions import near_match
+
+available = sorted(known_plugins.keys())
+guess = near_match(requested, available)
+hint_text = (
+    f"Did you mean '{guess}'?" if guess else f"Available: {available}"
+)
+raise PluginLoadError(
+    f"Unknown plugin: '{requested}'",
+    hint=hint_text,
+)
+```
+
+`str(exc)` 会自动多出一行 `  hint: ...`；首行保持原 message 不变以保护
+日志聚合。
+
+## 22. 事件分类（Spec B WP2）
+
+发射的事件名建议在 `openagents/interfaces/event_taxonomy.py:EVENT_SCHEMAS`
+登记，并在 `docs/event-taxonomy.md` 同步描述（运行
+`uv run python -m openagents.tools.gen_event_doc` 生成）。`AsyncEventBus.emit`
+会对已登记事件做 advisory 校验：缺少必需 payload key 会 warning，从不
+raise。未登记的事件名直接放行。
+
+## 23. Optional extras（Spec C）
+
+如果你的插件依赖一个 heavy / 可选的 PyPI 包（例如 `aiosqlite`、
+`opentelemetry-api`、`mem0ai`、`mcp`），不要把它放进 `[project]
+dependencies`，而是声明成一个 optional extra：
+
+```toml
+[project.optional-dependencies]
+sqlite = ["aiosqlite>=0.20.0"]
+otel = ["opentelemetry-api>=1.25.0"]
+```
+
+模块顶层用 fail-soft import 守住缺失：
+
+```python
+try:
+    import aiosqlite
+    _HAS_AIOSQLITE = True
+except ImportError:
+    aiosqlite = None  # type: ignore[assignment]
+    _HAS_AIOSQLITE = False
+```
+
+`__init__` 里在用户尝试构造时报 `PluginLoadError` 并带上安装提示：
+
+```python
+from openagents.errors.exceptions import PluginLoadError
+
+class MyOptionalPlugin(...):
+    def __init__(self, config=None):
+        if not _HAS_AIOSQLITE:
+            raise PluginLoadError(
+                "session 'sqlite' requires the 'aiosqlite' package",
+                hint="Install the 'sqlite' extra: uv sync --extra sqlite",
+            )
+        ...
+```
+
+这样 `openagents.plugins.registry` 即使在 extras 没装时也能 import
+（`_BUILTIN_REGISTRY` 注册的是类符号本身，不会去构造）。
+对应的测试用 `pytest.importorskip("aiosqlite")` 在文件顶部 skip
+掉，默认 `uv sync` 仍然全绿；CI 单独装 extra 跑一次即可。
+
+把新文件加进 `[tool.coverage.report] omit`，避免可选依赖没装时拖
+垮覆盖率门槛。
+
+## 24. 继续阅读
 
 - [开发者指南](developer-guide.md)
 - [Seam 与扩展点](seams-and-extension-points.md)

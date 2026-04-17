@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Generic, TypeVar
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,6 +36,8 @@ class RunBudget(BaseModel):
     max_steps: int | None = None
     max_duration_ms: int | None = None
     max_tool_calls: int | None = None
+    max_validation_retries: int | None = 3
+    max_cost_usd: float | None = None
 
 
 class RunArtifact(BaseModel):
@@ -59,6 +61,10 @@ class RunUsage(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
+    input_tokens_cached: int = 0
+    input_tokens_cache_creation: int = 0
+    cost_usd: float | None = None
+    cost_breakdown: dict[str, float] = Field(default_factory=dict)
 
 
 class RunRequest(BaseModel):
@@ -75,21 +81,52 @@ class RunRequest(BaseModel):
     context_hints: dict[str, Any] = Field(default_factory=dict)
     budget: RunBudget | None = None
     deps: Any = None
+    output_type: type[BaseModel] | None = None
 
 
-class RunResult(BaseModel):
+OutputT = TypeVar("OutputT")
+
+
+class RunResult(BaseModel, Generic[OutputT]):
     """Structured runtime result."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     run_id: str
-    final_output: Any = None
+    final_output: OutputT | None = None
     stop_reason: StopReason = StopReason.COMPLETED
     usage: RunUsage = Field(default_factory=RunUsage)
     artifacts: list[RunArtifact] = Field(default_factory=list)
     error: str | None = None
     exception: OpenAgentsError | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RunStreamChunkKind(str, Enum):
+    RUN_STARTED = "run.started"
+    LLM_DELTA = "llm.delta"
+    LLM_FINISHED = "llm.finished"
+    TOOL_STARTED = "tool.started"
+    TOOL_DELTA = "tool.delta"
+    TOOL_FINISHED = "tool.finished"
+    ARTIFACT = "artifact"
+    VALIDATION_RETRY = "validation.retry"
+    RUN_FINISHED = "run.finished"
+
+
+class RunStreamChunk(BaseModel):
+    """One chunk of a streamed run."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    kind: RunStreamChunkKind
+    run_id: str
+    session_id: str = ""
+    agent_id: str = ""
+    sequence: int = 0
+    timestamp_ms: int = 0
+    payload: dict[str, Any] = Field(default_factory=dict)
+    result: "RunResult | None" = None
 
 
 class RuntimePlugin(BasePlugin):
@@ -170,3 +207,6 @@ class RuntimePlugin(BasePlugin):
 RUNTIME_RUN = "runtime.run"
 RUNTIME_MANAGE = "runtime.manage"  # start/stop/pause runtime
 RUNTIME_LIFECYCLE = "runtime.lifecycle"  # initialize/validate/health_check
+
+
+RunStreamChunk.model_rebuild()

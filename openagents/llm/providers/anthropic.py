@@ -4,19 +4,34 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from openagents.llm.base import LLMChunk, LLMResponse, LLMToolCall, LLMUsage
 from openagents.llm.providers._http_base import HTTPProviderClient
+
+if TYPE_CHECKING:
+    from openagents.config.schema import LLMPricing
+
+
+_ANTHROPIC_PRICE_TABLE: dict[str, dict[str, float]] = {
+    "claude-opus-4-6":   {"in": 15.00, "out": 75.00, "cached_read": 1.50, "cached_write": 18.75},
+    "claude-sonnet-4-6": {"in":  3.00, "out": 15.00, "cached_read": 0.30, "cached_write":  3.75},
+    "claude-haiku-4-5":  {"in":  0.80, "out":  4.00, "cached_read": 0.08, "cached_write":  1.00},
+}
 
 
 def _parse_usage(payload: dict[str, Any] | None) -> LLMUsage | None:
     if not isinstance(payload, dict):
         return None
+    meta: dict[str, Any] = {}
+    for key in ("cache_read_input_tokens", "cache_creation_input_tokens"):
+        if key in payload:
+            meta[key] = int(payload.get(key) or 0)
     return LLMUsage(
         input_tokens=int(payload.get("input_tokens", 0) or 0),
         output_tokens=int(payload.get("output_tokens", 0) or 0),
         total_tokens=int(payload.get("total_tokens", 0) or 0),
+        metadata=meta,
     ).normalized()
 
 
@@ -38,21 +53,48 @@ class AnthropicClient(HTTPProviderClient):
     def __init__(
         self,
         *,
-        api_base: str,
+        api_base: str = "https://api.anthropic.com",
         model: str,
+        api_key: str | None = None,
         api_key_env: str = "ANTHROPIC_API_KEY",
         timeout_ms: int = 30000,
         default_temperature: float | None = None,
         max_tokens: int = 1024,
         stream_endpoint: str | None = None,
+        pricing: "LLMPricing | None" = None,
     ) -> None:
         super().__init__(timeout_ms=timeout_ms)
         self.api_base = api_base.rstrip("/")
         self.model = model
+        self.api_key = api_key
         self.api_key_env = api_key_env
         self.default_temperature = default_temperature
         self.default_max_tokens = max_tokens
         self._stream_endpoint = stream_endpoint
+
+        self.provider_name = "anthropic"
+        self.model_id = model or ""
+        rates = _ANTHROPIC_PRICE_TABLE.get(self.model_id, {})
+        self.price_per_mtok_input = rates.get("in")
+        self.price_per_mtok_output = rates.get("out")
+        self.price_per_mtok_cached_read = rates.get("cached_read")
+        self.price_per_mtok_cached_write = rates.get("cached_write")
+        self._pricing_overrides = pricing
+
+    def _normalize_usage(self, raw_usage: dict[str, Any] | None) -> LLMUsage:
+        raw = raw_usage or {}
+        meta: dict[str, Any] = {}
+        for key in ("cache_read_input_tokens", "cache_creation_input_tokens"):
+            if key in raw:
+                meta[key] = int(raw[key] or 0)
+        input_tokens = int(raw.get("input_tokens", 0) or 0)
+        output_tokens = int(raw.get("output_tokens", 0) or 0)
+        return LLMUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+            metadata=meta,
+        )
 
     def _messages_endpoint(self) -> str:
         if self.api_base.endswith("/v1"):
@@ -65,7 +107,7 @@ class AnthropicClient(HTTPProviderClient):
         return self._messages_endpoint()
 
     def _build_headers(self) -> dict[str, str]:
-        api_key = os.getenv(self.api_key_env, "")
+        api_key = self.api_key if self.api_key is not None else os.getenv(self.api_key_env, "")
         return {
             "Content-Type": "application/json",
             "x-api-key": api_key,
@@ -254,11 +296,22 @@ class AnthropicClient(HTTPProviderClient):
                     )
                 )
 
+        raw_usage = data.get("usage")
+        normalized_usage = (
+            self._normalize_usage(raw_usage).normalized()
+            if isinstance(raw_usage, dict)
+            else None
+        )
+        if normalized_usage is not None:
+            normalized_usage = self._compute_cost_for(
+                usage=normalized_usage,
+                overrides=self._pricing_overrides,
+            )
         result = LLMResponse(
             output_text="".join(output_parts),
             content=normalized_content,
             tool_calls=tool_calls,
-            usage=_parse_usage(data.get("usage")),
+            usage=normalized_usage,
             stop_reason=data.get("stop_reason"),
             structured_output=structured_output,
             model=data.get("model"),
@@ -330,17 +383,16 @@ class AnthropicClient(HTTPProviderClient):
 
                     if event_type is None and "choices" in data:
                         usage = data.get("usage")
-                        parsed_usage = _parse_usage(
-                            {
-                                "input_tokens": (usage or {}).get("prompt_tokens", 0),
-                                "output_tokens": (usage or {}).get("completion_tokens", 0),
-                                "total_tokens": (usage or {}).get("total_tokens", 0),
-                            }
-                            if isinstance(usage, dict)
-                            else None
-                        )
-                        if parsed_usage is not None:
-                            latest_usage = parsed_usage
+                        if isinstance(usage, dict):
+                            latest_usage = self._compute_cost_for(
+                                usage=self._normalize_usage(
+                                    {
+                                        "input_tokens": usage.get("prompt_tokens", 0),
+                                        "output_tokens": usage.get("completion_tokens", 0),
+                                    }
+                                ).normalized(),
+                                overrides=self._pricing_overrides,
+                            )
 
                         for choice in data.get("choices", []):
                             if not isinstance(choice, dict):
@@ -407,9 +459,12 @@ class AnthropicClient(HTTPProviderClient):
                     if event_type == "message_start":
                         message = data.get("message", {})
                         if isinstance(message, dict):
-                            usage = _parse_usage(message.get("usage"))
-                            if usage is not None:
-                                latest_usage = usage
+                            msg_usage = message.get("usage")
+                            if isinstance(msg_usage, dict):
+                                latest_usage = self._compute_cost_for(
+                                    usage=self._normalize_usage(msg_usage).normalized(),
+                                    overrides=self._pricing_overrides,
+                                )
                         yield LLMChunk(type="message_start", content=data, usage=latest_usage)
                     elif event_type == "content_block_start":
                         yield LLMChunk(
@@ -431,25 +486,26 @@ class AnthropicClient(HTTPProviderClient):
                     elif event_type == "message_delta":
                         usage_payload = data.get("usage")
                         if isinstance(usage_payload, dict):
-                            input_tokens = (
-                                latest_usage.input_tokens
-                                if latest_usage is not None
-                                else int(usage_payload.get("input_tokens", 0) or 0)
-                            )
-                            output_tokens = int(
-                                usage_payload.get(
-                                    "output_tokens",
-                                    latest_usage.output_tokens if latest_usage is not None else 0,
-                                )
-                                or 0
-                            )
+                            merged_raw: dict[str, Any] = dict(usage_payload)
+                            if latest_usage is not None:
+                                merged_raw.setdefault("input_tokens", latest_usage.input_tokens)
+                                merged_raw.setdefault("output_tokens", latest_usage.output_tokens)
+                            normalized_delta = self._normalize_usage(merged_raw)
                             total_tokens = int(usage_payload.get("total_tokens", 0) or 0)
                             if total_tokens <= 0:
-                                total_tokens = input_tokens + output_tokens
-                            latest_usage = LLMUsage(
-                                input_tokens=input_tokens,
-                                output_tokens=output_tokens,
-                                total_tokens=total_tokens,
+                                total_tokens = (
+                                    normalized_delta.input_tokens + normalized_delta.output_tokens
+                                )
+                            merged_metadata = dict(latest_usage.metadata) if latest_usage else {}
+                            merged_metadata.update(normalized_delta.metadata)
+                            latest_usage = self._compute_cost_for(
+                                usage=LLMUsage(
+                                    input_tokens=normalized_delta.input_tokens,
+                                    output_tokens=normalized_delta.output_tokens,
+                                    total_tokens=total_tokens,
+                                    metadata=merged_metadata,
+                                ),
+                                overrides=self._pricing_overrides,
                             )
                         delta = data.get("delta", {})
                         if isinstance(delta, dict):

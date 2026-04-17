@@ -4,11 +4,36 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
+
 from openagents.interfaces.response_repair import ResponseRepairDecision, ResponseRepairPolicyPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
-class BasicResponseRepairPolicy(ResponseRepairPolicyPlugin):
-    """Default repair policy that emits a structured error diagnosis."""
+class BasicResponseRepairPolicy(TypedConfigPluginMixin, ResponseRepairPolicyPlugin):
+    """Default repair policy that emits a structured error diagnosis.
+
+    What:
+        Called when ``pattern.execute`` returns an empty assistant
+        message. Returns a structured ``ResponseRepairDecision``
+        describing the failure (most recent input, last tool
+        result if any) so downstream observers can attribute the
+        empty response. Never retries the LLM directly.
+
+    Usage:
+        ``{"response_repair_policy": {"type": "basic"}}``
+
+    Depends on:
+        - the most recent ``tool_results`` and ``input_text`` on
+          ``RunContext``
+    """
+
+    class Config(BaseModel):
+        pass
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config or {}, capabilities=set())
+        self._init_typed_config()
 
     async def repair_empty_response(
         self,

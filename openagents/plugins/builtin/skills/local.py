@@ -6,7 +6,10 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from openagents.interfaces.skills import SessionSkillSummary, SkillsPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
 def _strip_quotes(value: str) -> str:
@@ -49,22 +52,43 @@ def _parse_flat_yaml(path: Path | None) -> dict[str, str]:
     return data
 
 
-class LocalSkillsManager(SkillsPlugin):
-    """Discover and execute repo-local skill packages."""
+class LocalSkillsManager(TypedConfigPluginMixin, SkillsPlugin):
+    """Discover and execute repo-local skill packages.
+
+    What:
+        Walks ``search_paths`` for directories whose ``SKILL.md``
+        opens with YAML frontmatter, treats each as a skill
+        package, and exposes them through ``prepare_session`` /
+        ``load_references`` / ``run_skill``. Skill payloads run by
+        importing ``<package>.entrypoint:run_openagent_skill``.
+
+    Usage:
+        ``{"skills": {"type": "local", "config": {"search_paths":
+        ["skills"], "enabled": ["my_skill"]}}}``
+
+    Depends on:
+        - the local filesystem under ``search_paths``
+        - the host runtime's session manager (injected as
+          ``self._session_manager``)
+    """
 
     _STATE_KEY = "_session_skills"
 
+    class Config(BaseModel):
+        search_paths: list[str] = Field(default_factory=lambda: ["skills"])
+        enabled: list[str] = Field(default_factory=list)
+
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities=set())
-        raw_paths = self.config.get("search_paths", ["skills"])
+        self._init_typed_config()
         self._search_paths = [
             Path(path).resolve(strict=False)
-            for path in raw_paths
+            for path in self.cfg.search_paths
             if isinstance(path, str) and path.strip()
         ]
         self._enabled = {
             str(name).strip()
-            for name in self.config.get("enabled", [])
+            for name in self.cfg.enabled
             if isinstance(name, str) and name.strip()
         }
         self._packages: dict[str, dict[str, Any]] = {}
@@ -157,7 +181,14 @@ class LocalSkillsManager(SkillsPlugin):
         packages = self._discover()
         package = packages.get(skill_name)
         if package is None:
-            raise KeyError(f"Unknown skill package: '{skill_name}'")
+            from openagents.errors.suggestions import near_match
+
+            available = sorted(packages.keys())
+            guess = near_match(skill_name, available)
+            extra = f" Did you mean '{guess}'?" if guess else ""
+            raise KeyError(
+                f"Unknown skill package: '{skill_name}'.{extra} Available: {available}"
+            )
 
         state = await session_manager.get_state(session_id)
         current = dict(state.get(self._STATE_KEY, {}))
@@ -187,9 +218,17 @@ class LocalSkillsManager(SkillsPlugin):
         import inspect
         import sys
 
-        package = self._discover().get(skill_name)
+        packages = self._discover()
+        package = packages.get(skill_name)
         if package is None:
-            raise KeyError(f"Unknown skill package: '{skill_name}'")
+            from openagents.errors.suggestions import near_match
+
+            available = sorted(packages.keys())
+            guess = near_match(skill_name, available)
+            extra = f" Did you mean '{guess}'?" if guess else ""
+            raise KeyError(
+                f"Unknown skill package: '{skill_name}'.{extra} Available: {available}"
+            )
 
         src_root = package["root"] / "src"
         entrypoint_module = f"{package['package_name']}.entrypoint"

@@ -280,13 +280,13 @@ async def test_runtime_uses_builtin_filesystem_execution_policy():
 
 
 @pytest.mark.asyncio
-async def test_runtime_uses_builtin_summarizing_context_assembler():
+async def test_runtime_uses_builtin_truncating_context_assembler():
     payload = _payload(
         "tests.fixtures.runtime_plugins.InjectWritebackMemory",
         "tests.fixtures.runtime_plugins.ContextAwarePattern",
     )
     payload["agents"][0]["context_assembler"] = {
-        "type": "summarizing",
+        "type": "truncating",
         "config": {"max_messages": 2, "max_artifacts": 1, "include_summary_message": True},
     }
     config = load_config_dict(payload)
@@ -314,7 +314,7 @@ async def test_runtime_uses_builtin_summarizing_context_assembler():
 
     assert result["transcript_count"] == 3
     assert result["artifact_names"] == ["b.txt"]
-    assert result["assembly_metadata"]["assembler"] == "summarizing"
+    assert result["assembly_metadata"]["assembler"] == "truncating"
     assert result["assembly_metadata"]["omitted_messages"] == 2
     assert result["assembly_metadata"]["omitted_artifacts"] == 1
 

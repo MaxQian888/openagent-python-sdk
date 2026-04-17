@@ -7,16 +7,28 @@ import json
 from typing import Any
 from urllib import request
 
+from pydantic import BaseModel
+
 from openagents.interfaces.capabilities import TOOL_INVOKE
 from openagents.interfaces.tool import ToolPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
-class HttpRequestTool(ToolPlugin):
-    """Make HTTP request."""
+class HttpRequestTool(TypedConfigPluginMixin, ToolPlugin):
+    """Make HTTP request.
+
+    What: synchronous urllib HTTP client run on a worker thread; supports GET/POST/PUT/DELETE/PATCH with JSON or raw body.
+    Usage: ``{"id": "http", "type": "http_request", "config": {"timeout": 30}}``; invoke with ``{"url": "...", "method": "GET", "headers": {...}, "body": ...}``.
+    Depends on: stdlib ``urllib.request``; pair with ``network_allowlist`` execution policy.
+    """
+
+    class Config(BaseModel):
+        timeout: int = 30
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
-        self._timeout = config.get("timeout", 30) if config else 30
+        self._init_typed_config()
+        self._timeout = self.cfg.timeout
 
     async def invoke(self, params: dict[str, Any], context: Any) -> Any:
         url = params.get("url", "")

@@ -539,7 +539,47 @@ policy 输出：
 
 它们不是 builtin registry 的完整替代品。
 
-## 13. 继续阅读
+## 13. Plugin authoring helpers
+
+供自定义 combinator 与 pattern 作者使用的公开 helper。
+
+| Symbol | Module | Purpose |
+| --- | --- | --- |
+| `load_plugin(kind, ref, *, required_methods=())` | `openagents.plugins.loader` | 公开的子插件加载入口，combinator (`memory.chain`, `tool_executor.retry`, `execution_policy.composite`, `events.file_logging`) 内部都走它 |
+| `unwrap_tool_result(result) -> tuple[data, metadata \| None]` | `openagents.interfaces.pattern` | 把 `_BoundTool.invoke()` 返回的 `ToolExecutionResult` 解包成 `(data, executor_metadata)`；对 raw `ToolPlugin.invoke()` 返回值则直接 passthrough，metadata 为 `None` |
+| `TypedConfigPluginMixin` | `openagents.interfaces.typed_config` | Mixin，提供基于嵌套 `Config(BaseModel)` 的 `self.cfg` 校验；未知键发 warning 而非报错 |
+
+`openagents.plugins.loader._load_plugin` 仍保留为 deprecated 别名，
+会发 `DeprecationWarning`。
+
+## 14. 错误与诊断 helper（Spec B WP1 / WP2）
+
+| Symbol | Module | Purpose |
+| --- | --- | --- |
+| `OpenAgentsError(message, *, hint=None, docs_url=None, ...)` | `openagents.errors.exceptions` | 基类异常；新增可选 `hint` / `docs_url`。`str(exc)` 在被设置时会多输出 `  hint: ...` / `  docs: ...` 行，首行保持原 message 不变 |
+| `near_match(needle, candidates, *, cutoff=0.6)` | `openagents.errors.suggestions` | 轻量 "did you mean?" 包装，基于 `difflib.get_close_matches`；返回最近匹配或 `None` |
+| `EVENT_SCHEMAS` | `openagents.interfaces.event_taxonomy` | 已声明事件名 → `EventSchema(name, required_payload, optional_payload, description)` 的字典。`AsyncEventBus.emit` 在缺少必需 key 时 `logger.warning`，从不 raise |
+| `EventSchema` | `openagents.interfaces.event_taxonomy` | 单个事件 schema 的 frozen dataclass |
+| `gen_event_doc.render_doc()` / `write_doc(target)` / `main(argv)` | `openagents.tools.gen_event_doc` | 从 `EVENT_SCHEMAS` 重新生成 `docs/event-taxonomy.md` 的 helper |
+
+## 15. Optional builtin index（Spec C）
+
+These builtins ship under `openagents/plugins/builtin/` but require an
+optional extra to construct. Module import always succeeds; instantiation
+without the extra raises `PluginLoadError` with an install hint.
+
+| Class | Seam / type key | Module | Extra |
+| --- | --- | --- | --- |
+| `Mem0Memory` | `memory` / `mem0` | `openagents.plugins.builtin.memory.mem0_memory` | `mem0` |
+| `McpTool` | `tool` / `mcp` | `openagents.plugins.builtin.tool.mcp_tool` | `mcp` |
+| `SqliteSessionManager` | `session` / `sqlite` | `openagents.plugins.builtin.session.sqlite_backed` | `sqlite` |
+| `OtelEventBusBridge` | `events` / `otel_bridge` | `openagents.plugins.builtin.events.otel_bridge` | `otel` |
+
+Install with `uv sync --extra <name>` (or `uv sync --extra all`). Each
+module is also added to `[tool.coverage.report] omit` in `pyproject.toml`
+so the 92% coverage floor stays intact when the extra is not installed.
+
+## 16. 继续阅读
 
 - [开发者指南](developer-guide.md)
 - [Seam 与扩展点](seams-and-extension-points.md)

@@ -475,8 +475,12 @@ class ToolCallingPattern:
         return {"type": "tool_call", "tool": "custom_tool", "params": {"value": self.context.input_text}}
 
     async def execute(self) -> Any:
+        from openagents.interfaces.pattern import unwrap_tool_result
+
         tool = self.context.tools["custom_tool"]
-        return await tool.invoke({"value": self.context.input_text}, self.context)
+        raw = await tool.invoke({"value": self.context.input_text}, self.context)
+        data, _ = unwrap_tool_result(raw)
+        return data
 
 
 class TwoToolCallsPattern:
@@ -502,9 +506,13 @@ class TwoToolCallsPattern:
         return {"type": "continue"}
 
     async def execute(self) -> Any:
+        from openagents.interfaces.pattern import unwrap_tool_result
+
         tool = self.context.tools["custom_tool"]
-        first = await tool.invoke({"value": "one"}, self.context)
-        second = await tool.invoke({"value": "two"}, self.context)
+        first_raw = await tool.invoke({"value": "one"}, self.context)
+        second_raw = await tool.invoke({"value": "two"}, self.context)
+        first, _ = unwrap_tool_result(first_raw)
+        second, _ = unwrap_tool_result(second_raw)
         return {"first": first, "second": second}
 
 
@@ -575,9 +583,13 @@ class ConfigurableToolPattern:
         return {"type": "continue"}
 
     async def execute(self) -> Any:
+        from openagents.interfaces.pattern import unwrap_tool_result
+
         tool_id = self.config.get("tool_id", "custom_tool")
         params = dict(self.config.get("params", {}))
-        return await self.context.tools[tool_id].invoke(params, self.context)
+        raw = await self.context.tools[tool_id].invoke(params, self.context)
+        data, _ = unwrap_tool_result(raw)
+        return data
 
 
 class RuntimePromptSkill:
@@ -733,3 +745,35 @@ class SummarizingContextAssembler:
 class BadContextAssembler:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
+
+
+from openagents.interfaces.pattern import PatternPlugin as _PatternPlugin  # noqa: E402
+
+
+class QueuedRawOutputPattern(_PatternPlugin):
+    """Pattern fixture that returns a queue of raw outputs on successive execute() calls.
+
+    Inherits ``PatternPlugin`` so it picks up ``finalize()``,
+    ``_format_validation_error()``, and ``_inject_validation_correction()``.
+    Each ``execute()`` call pops one item from the config-provided
+    ``responses`` list and returns it as raw output, allowing the validation
+    retry loop to drive multiple attempts.
+    """
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        from openagents.interfaces.capabilities import PATTERN_EXECUTE
+
+        super().__init__(config=config or {}, capabilities={PATTERN_EXECUTE})
+        self._responses = list(self.config.get("responses", []))
+        self.execute_calls = 0
+
+    async def execute(self) -> Any:
+        # Apply any queued validation correction from prior failed finalize.
+        self._inject_validation_correction()
+        self.execute_calls += 1
+        if not self._responses:
+            raise RuntimeError("QueuedRawOutputPattern exhausted its response queue")
+        return self._responses.pop(0)
+
+    async def react(self) -> dict[str, Any]:
+        return {"type": "final", "content": await self.execute()}

@@ -14,12 +14,20 @@ logger = logging.getLogger(__name__)
 class Mem0Memory(MemoryPlugin):
     """Semantic memory using Mem0 with agent's LLM.
 
-    Uses the LLM configured in the agent for embeddings and memory operations.
-    No additional API keys required - reuses agent's LLM.
+    What:
+        Uses the LLM configured on the agent for embeddings and memory
+        operations via the optional ``mem0ai`` package. No additional
+        API keys required - reuses the agent's LLM client.
 
-    Config:
-        - collection_name: Memory collection name
-        - search_limit: Number of memories to retrieve
+    Usage:
+        ``{"type": "mem0", "config": {"collection_name":
+        "openagents_memory", "search_limit": 5}}``. Requires the
+        ``mem0`` extra: ``uv sync --extra mem0``.
+
+    Depends on:
+        - the optional ``mem0ai`` PyPI package
+        - the agent's configured LLM client (passed in via context)
+        - ``RunContext.memory_view`` / ``RunContext.input_text``
     """
 
     def __init__(self, config: dict[str, Any] | None = None):

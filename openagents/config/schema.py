@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator, model_validator
 
 from openagents.errors import ConfigValidationError
+from openagents.observability.config import LoggingConfig
 
 
 def _require_dict(value: Any, field_name: str) -> dict[str, Any]:
@@ -121,6 +122,15 @@ class RuntimeOptions(BaseModel):
     event_queue_size: PositiveInt = 2000
 
 
+class LLMPricing(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input: float | None = None
+    output: float | None = None
+    cached_read: float | None = None
+    cached_write: float | None = None
+
+
 class LLMOptions(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -132,6 +142,7 @@ class LLMOptions(BaseModel):
     max_tokens: PositiveInt | None = None
     timeout_ms: PositiveInt = 30000
     stream_endpoint: str | None = None
+    pricing: LLMPricing | None = None
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -234,6 +245,7 @@ class AppConfig(BaseModel):
     session: SessionRef = Field(default_factory=lambda: SessionRef(type="in_memory"))
     events: EventBusRef = Field(default_factory=lambda: EventBusRef(type="async"))
     skills: SkillsRef = Field(default_factory=lambda: SkillsRef(type="local"))
+    logging: LoggingConfig | None = None
 
     @model_validator(mode="before")
     @classmethod

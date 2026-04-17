@@ -18,10 +18,19 @@ from openagents.decorators import (
     _TOOL_EXECUTOR_REGISTRY,
 )
 from openagents.plugins.builtin.events.async_event_bus import AsyncEventBus
+from openagents.plugins.builtin.events.file_logging import FileLoggingEventBus
+from openagents.plugins.builtin.events.otel_bridge import OtelEventBusBridge
+from openagents.plugins.builtin.events.rich_console import RichConsoleEventBus
 from openagents.plugins.builtin.skills.local import LocalSkillsManager
-from openagents.plugins.builtin.context.summarizing import SummarizingContextAssembler
+from openagents.plugins.builtin.context.truncating import TruncatingContextAssembler
+from openagents.plugins.builtin.context.head_tail import HeadTailContextAssembler
+from openagents.plugins.builtin.context.sliding_window import SlidingWindowContextAssembler
+from openagents.plugins.builtin.context.importance_weighted import ImportanceWeightedContextAssembler
 from openagents.plugins.builtin.execution_policy.filesystem import FilesystemExecutionPolicy
+from openagents.plugins.builtin.execution_policy.composite import CompositeExecutionPolicy
+from openagents.plugins.builtin.execution_policy.network import NetworkAllowlistExecutionPolicy
 from openagents.plugins.builtin.followup.basic import BasicFollowupResolver
+from openagents.plugins.builtin.followup.rule_based import RuleBasedFollowupResolver
 from openagents.plugins.builtin.memory.buffer import BufferMemory
 from openagents.plugins.builtin.memory.chain import ChainMemory
 from openagents.plugins.builtin.memory.mem0_memory import Mem0Memory
@@ -31,8 +40,12 @@ from openagents.plugins.builtin.pattern.react import ReActPattern
 from openagents.plugins.builtin.pattern.reflexion import ReflexionPattern
 from openagents.plugins.builtin.runtime.default_runtime import DefaultRuntime
 from openagents.plugins.builtin.response_repair.basic import BasicResponseRepairPolicy
+from openagents.plugins.builtin.response_repair.strict_json import StrictJsonResponseRepairPolicy
 from openagents.plugins.builtin.session.in_memory import InMemorySessionManager
+from openagents.plugins.builtin.session.jsonl_file import JsonlFileSessionManager
+from openagents.plugins.builtin.session.sqlite_backed import SqliteSessionManager
 from openagents.plugins.builtin.tool_executor.safe import SafeToolExecutor
+from openagents.plugins.builtin.tool_executor.retry import RetryToolExecutor
 from openagents.plugins.builtin.tool.common import BuiltinSearchTool
 from openagents.plugins.builtin.tool.datetime_tools import (
     CurrentTimeTool,
@@ -105,27 +118,40 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     },
     "session": {
         "in_memory": InMemorySessionManager,
+        "jsonl_file": JsonlFileSessionManager,
+        "sqlite": SqliteSessionManager,
     },
     "events": {
         "async": AsyncEventBus,
+        "file_logging": FileLoggingEventBus,
+        "otel_bridge": OtelEventBusBridge,
+        "rich_console": RichConsoleEventBus,
     },
     "skills": {
         "local": LocalSkillsManager,
     },
     "tool_executor": {
         "safe": SafeToolExecutor,
+        "retry": RetryToolExecutor,
     },
     "execution_policy": {
         "filesystem": FilesystemExecutionPolicy,
+        "composite": CompositeExecutionPolicy,
+        "network_allowlist": NetworkAllowlistExecutionPolicy,
     },
     "context_assembler": {
-        "summarizing": SummarizingContextAssembler,
+        "truncating": TruncatingContextAssembler,
+        "head_tail": HeadTailContextAssembler,
+        "sliding_window": SlidingWindowContextAssembler,
+        "importance_weighted": ImportanceWeightedContextAssembler,
     },
     "followup_resolver": {
         "basic": BasicFollowupResolver,
+        "rule_based": RuleBasedFollowupResolver,
     },
     "response_repair_policy": {
         "basic": BasicResponseRepairPolicy,
+        "strict_json": StrictJsonResponseRepairPolicy,
     },
     "tool": {
         "builtin_search": BuiltinSearchTool,

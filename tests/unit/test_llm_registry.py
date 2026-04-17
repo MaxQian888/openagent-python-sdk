@@ -76,3 +76,18 @@ def test_mock_llm_client_parse_prompt():
     text = "INPUT: New message\nHISTORY_COUNT: 3"
     result = client._parse_prompt(text)
     assert result["history_count"] == 3
+
+
+def test_mock_client_pricing_overridable():
+    from openagents.llm.providers.mock import MockClient
+
+    client = MockClient(api_key="", model="mock-1")
+    # Default: no prices.
+    assert client.price_per_mtok_input is None
+    # Manual assignment used by tests.
+    client.price_per_mtok_input = 1.0
+    client.price_per_mtok_output = 2.0
+    assert client.price_per_mtok_input == 1.0
+
+    # count_tokens returns deterministic len//4
+    assert client.count_tokens("xxxx" * 4) == 4

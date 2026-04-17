@@ -27,6 +27,7 @@ from openagents.plugins.builtin.execution_policy.filesystem import FilesystemExe
 from openagents.plugins.builtin.execution_policy.composite import CompositeExecutionPolicy
 from openagents.plugins.builtin.execution_policy.network import NetworkAllowlistExecutionPolicy
 from openagents.plugins.builtin.followup.basic import BasicFollowupResolver
+from openagents.plugins.builtin.followup.rule_based import RuleBasedFollowupResolver
 from openagents.plugins.builtin.memory.buffer import BufferMemory
 from openagents.plugins.builtin.memory.chain import ChainMemory
 from openagents.plugins.builtin.memory.mem0_memory import Mem0Memory
@@ -135,6 +136,7 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     },
     "followup_resolver": {
         "basic": BasicFollowupResolver,
+        "rule_based": RuleBasedFollowupResolver,
     },
     "response_repair_policy": {
         "basic": BasicResponseRepairPolicy,

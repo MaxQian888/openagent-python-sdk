@@ -345,6 +345,13 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
             input_text=request.input_text,
             run_id=request.run_id,
         )
+        await self._event_bus.emit(
+            "session.run.started",
+            agent_id=request.agent_id,
+            session_id=request.session_id,
+            run_id=request.run_id,
+            input_text=request.input_text,
+        )
 
         llm_client = self._get_llm_client(agent)
         await self._event_bus.emit(
@@ -373,10 +380,21 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                 )
 
                 session_state.pop("_runtime_last_output", None)
+                await self._event_bus.emit("context.assemble.started")
+                assemble_started_at = time.perf_counter()
                 assembly = await context_assembler.assemble(
                     request=request,
                     session_state=session_state,
                     session_manager=self._session_manager,
+                )
+                assemble_duration_ms = int(
+                    (time.perf_counter() - assemble_started_at) * 1000
+                )
+                await self._event_bus.emit(
+                    "context.assemble.completed",
+                    transcript_size=len(assembly.transcript),
+                    artifact_count=len(assembly.session_artifacts),
+                    duration_ms=assemble_duration_ms,
                 )
                 self._apply_runtime_budget(pattern=plugins.pattern, agent=agent)
                 bound_tools = self._bind_tools(plugins.tools, tool_executor, execution_policy)
@@ -485,6 +503,14 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                         run_id=request.run_id,
                         error=str(validation_exhausted),
                     )
+                    await self._event_bus.emit(
+                        "session.run.completed",
+                        agent_id=request.agent_id,
+                        session_id=request.session_id,
+                        run_id=request.run_id,
+                        stop_reason=RUN_STOP_FAILED,
+                        duration_ms=int((time.perf_counter() - started_at) * 1000),
+                    )
                     return RunResult(
                         run_id=request.run_id,
                         final_output=None,
@@ -537,6 +563,14 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                     run_id=request.run_id,
                     result=result,
                 )
+                await self._event_bus.emit(
+                    "session.run.completed",
+                    agent_id=request.agent_id,
+                    session_id=request.session_id,
+                    run_id=request.run_id,
+                    stop_reason=RUN_STOP_COMPLETED,
+                    duration_ms=int((time.perf_counter() - started_at) * 1000),
+                )
                 return run_result
         except Exception as exc:
             wrapped_exc = exc
@@ -565,6 +599,14 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                 session_id=request.session_id,
                 run_id=request.run_id,
                 error=str(wrapped_exc),
+            )
+            await self._event_bus.emit(
+                "session.run.completed",
+                agent_id=request.agent_id,
+                session_id=request.session_id,
+                run_id=request.run_id,
+                stop_reason=stop_reason,
+                duration_ms=int((time.perf_counter() - started_at) * 1000),
             )
             run_result = RunResult(
                 run_id=request.run_id,
@@ -947,12 +989,19 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
         if not supports(memory, MEMORY_INJECT):
             return
         context = pattern.context
+        await self._event_bus.emit("memory.inject.started")
         try:
             await memory.inject(context)
+            view = getattr(context, "memory_view", None)
+            view_size = len(view) if view is not None else 0
             await self._event_bus.emit(
                 MEMORY_INJECTED,
                 agent_id=context.agent_id,
                 session_id=context.session_id,
+            )
+            await self._event_bus.emit(
+                "memory.inject.completed",
+                view_size=view_size,
             )
         except Exception as exc:
             await self._event_bus.emit(
@@ -986,6 +1035,7 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
         if not supports(memory, MEMORY_WRITEBACK):
             return
         context = pattern.context
+        await self._event_bus.emit("memory.writeback.started")
         try:
             await memory.writeback(context)
             await self._event_bus.emit(
@@ -993,6 +1043,7 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                 agent_id=context.agent_id,
                 session_id=context.session_id,
             )
+            await self._event_bus.emit("memory.writeback.completed")
         except Exception as exc:
             await self._event_bus.emit(
                 MEMORY_WRITEBACK_FAILED,

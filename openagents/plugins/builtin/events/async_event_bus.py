@@ -7,6 +7,7 @@ from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel
 
+from openagents.interfaces.event_taxonomy import EVENT_SCHEMAS
 from openagents.interfaces.events import (
     EVENT_EMIT,
     EVENT_HISTORY,
@@ -49,7 +50,24 @@ class AsyncEventBus(TypedConfigPluginMixin, EventBusPlugin):
         self._subscribers.setdefault(event_name, []).append(handler)
 
     async def emit(self, event_name: str, **payload: Any) -> RuntimeEvent:
-        """Emit an event."""
+        """Emit an event.
+
+        For declared events (see
+        :data:`openagents.interfaces.event_taxonomy.EVENT_SCHEMAS`),
+        missing required payload keys produce a ``logger.warning``;
+        delivery to subscribers proceeds unchanged. Custom event
+        names not present in the taxonomy are emitted without checks.
+        """
+        schema = EVENT_SCHEMAS.get(event_name)
+        if schema is not None:
+            missing = [k for k in schema.required_payload if k not in payload]
+            if missing:
+                logger.warning(
+                    "event '%s' missing required payload keys %s "
+                    "(declared in event_taxonomy.EVENT_SCHEMAS)",
+                    event_name,
+                    missing,
+                )
         event = RuntimeEvent(name=event_name, payload=payload)
         self._history.append(event)
 

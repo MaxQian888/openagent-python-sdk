@@ -37,7 +37,7 @@ class ChainMemory(MemoryPlugin):
 
     def _load_memories(self) -> None:
         """Load and instantiate memories from config."""
-        from openagents.plugins.loader import _load_plugin
+        from openagents.plugins.loader import load_plugin
         from openagents.config.schema import MemoryRef
 
         memories_config = self.config.get("memories", [])
@@ -47,7 +47,7 @@ class ChainMemory(MemoryPlugin):
         for i, mem_config in enumerate(memories_config):
             # Support both {"type": "xxx"} and {"impl": "xxx"} formats
             ref = MemoryRef.model_validate(mem_config)
-            memory = _load_plugin("memory", ref)
+            memory = load_plugin("memory", ref)
             self._memories.append(memory)
 
         # Aggregate capabilities from all memories

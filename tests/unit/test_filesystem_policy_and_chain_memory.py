@@ -116,7 +116,7 @@ async def test_chain_memory_loads_memories_and_runs_in_expected_order(monkeypatc
         _ = (kind, ref)
         return loaded.pop(0)
 
-    monkeypatch.setattr("openagents.plugins.loader._load_plugin", _fake_load_plugin)
+    monkeypatch.setattr("openagents.plugins.loader.load_plugin", _fake_load_plugin)
 
     memory = ChainMemory(
         {

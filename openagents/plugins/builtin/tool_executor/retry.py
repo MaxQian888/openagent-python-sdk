@@ -43,9 +43,9 @@ class RetryToolExecutor(ToolExecutorPlugin):
 
     def _load_inner(self, ref: dict[str, Any]) -> Any:
         from openagents.config.schema import ToolExecutorRef
-        from openagents.plugins.loader import _load_plugin
+        from openagents.plugins.loader import load_plugin
 
-        return _load_plugin("tool_executor", ToolExecutorRef(**ref), required_methods=("execute", "execute_stream"))
+        return load_plugin("tool_executor", ToolExecutorRef(**ref), required_methods=("execute", "execute_stream"))
 
     def _should_retry(self, exc: Exception | None) -> bool:
         if exc is None:

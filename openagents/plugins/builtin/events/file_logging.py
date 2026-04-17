@@ -53,9 +53,9 @@ class FileLoggingEventBus(EventBusPlugin):
 
     def _load_inner(self, ref: dict[str, Any]) -> Any:
         from openagents.config.schema import EventBusRef
-        from openagents.plugins.loader import _load_plugin
+        from openagents.plugins.loader import load_plugin
 
-        return _load_plugin("events", EventBusRef(**ref), required_methods=("emit", "subscribe"))
+        return load_plugin("events", EventBusRef(**ref), required_methods=("emit", "subscribe"))
 
     def subscribe(self, event_name: str, handler: Callable[[RuntimeEvent], Awaitable[None] | None]) -> None:
         self._inner.subscribe(event_name, handler)

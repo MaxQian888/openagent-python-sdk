@@ -28,9 +28,9 @@ class CompositeExecutionPolicy(ExecutionPolicyPlugin):
 
     def _load_child(self, ref: dict[str, Any]) -> Any:
         from openagents.config.schema import ExecutionPolicyRef
-        from openagents.plugins.loader import _load_plugin
+        from openagents.plugins.loader import load_plugin
 
-        return _load_plugin("execution_policy", ExecutionPolicyRef(**ref), required_methods=("evaluate",))
+        return load_plugin("execution_policy", ExecutionPolicyRef(**ref), required_methods=("evaluate",))
 
     async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
         child_metadata: list[dict[str, Any]] = []

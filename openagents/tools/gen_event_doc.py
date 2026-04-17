@@ -51,11 +51,37 @@ def _format_row(schema: EventSchema) -> str:
     )
 
 
+_FOOTER = """
+## OpenTelemetry mapping
+
+The optional `events.otel_bridge` builtin maps SDK events onto OpenTelemetry
+spans without altering the inner event bus contract. The mapping is one-to-one
+and stateless:
+
+| SDK | OpenTelemetry |
+|---|---|
+| event_name | span name `openagents.<event_name>` (e.g. `openagents.tool.succeeded`) |
+| `payload[key]` = `value` | span attribute `oa.<key>` with the string-coerced or JSON-serialized value |
+| value longer than `max_attribute_chars` (default 4096) | truncated to that length plus the literal suffix `...[truncated]` |
+| `include_events` filter (fnmatch) | only matching events produce spans; non-matches still go through the inner bus |
+
+Spans are one-shot: nothing happens inside the `with` block beyond setting
+attributes, so `start_time` and `end_time` are nearly equal. Pairing
+`session.run.started`/`session.run.completed` into a single parent span is
+out of scope for the current bridge.
+
+Configure a `TracerProvider` in the host process via `opentelemetry-sdk`
+plus an exporter of your choice; without one the OTel API no-ops and the
+bridge becomes essentially free.
+"""
+
+
 def render_doc() -> str:
     """Render the markdown body for ``docs/event-taxonomy.md``."""
     body = _HEADER
     for name in sorted(EVENT_SCHEMAS):
         body += _format_row(EVENT_SCHEMAS[name])
+    body += _FOOTER
     return body
 
 

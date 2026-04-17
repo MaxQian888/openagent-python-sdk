@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -36,18 +37,22 @@ async def _topic_b(request: web.Request) -> web.Response:
     return web.Response(text=_TOPIC_B, content_type="text/markdown")
 
 
-def _flaky_handler(state: _Flaky):
+def _flaky_handler(state: _Flaky, slow_ms: int = 500):
     async def _handler(request: web.Request) -> web.Response:
         state.calls += 1
         if state.calls <= 2:
-            return web.json_response({"error": "transient"}, status=503)
+            # Simulate an upstream hang: sleep longer than the executor timeout
+            # so SafeToolExecutor raises ToolTimeoutError and RetryToolExecutor
+            # actually retries. A plain 503 response would not cause a retry,
+            # because HttpRequestTool swallows HTTP error codes internally.
+            await asyncio.sleep(slow_ms / 1000)
         return web.json_response(_FLAKY_OK)
 
     return _handler
 
 
 @asynccontextmanager
-async def start_stub_server() -> AsyncIterator[str]:
+async def start_stub_server(flaky_slow_ms: int = 500) -> AsyncIterator[str]:
     """Start the stub server on 127.0.0.1:0 and yield its base URL.
 
     Each invocation produces a fresh ``_Flaky`` counter, so tests and demos
@@ -59,7 +64,7 @@ async def start_stub_server() -> AsyncIterator[str]:
     app.add_routes([
         web.get("/pages/topic-a", _topic_a),
         web.get("/pages/topic-b", _topic_b),
-        web.get("/pages/flaky", _flaky_handler(state)),
+        web.get("/pages/flaky", _flaky_handler(state, slow_ms=flaky_slow_ms)),
     ])
     runner = web.AppRunner(app)
     await runner.setup()

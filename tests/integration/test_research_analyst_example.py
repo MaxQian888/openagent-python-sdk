@@ -169,7 +169,11 @@ async def test_research_analyst_end_to_end(monkeypatch):
             input_text="write a report",
         )
         assert result_b is not None
-        assert report_path.exists(), "report.md was not written by the write_file tool"
+        # The flaky endpoint sleeps past the tool executor's default_timeout_ms on the
+        # first two attempts. If RetryToolExecutor did NOT retry, the scripted LLM
+        # would receive a timeout error on turn 1 and never reach the write_file call
+        # on turn 2. The fact that report.md exists at the end proves retry fired.
+        assert report_path.exists(), "report.md was not written — retry likely did not fire"
         content = report_path.read_text(encoding="utf-8")
         assert "research report" in content
 

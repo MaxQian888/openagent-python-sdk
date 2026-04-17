@@ -7,7 +7,7 @@
       "memory": {"type": "window_buffer", "config": {"window_size": 8}},
       "pattern": {
         "impl": "examples.research_analyst.app.followup_pattern.FollowupFirstReActPattern",
-        "config": {"max_iterations": 6}
+        "config": {"max_steps": 6}
       },
       "llm": {"provider": "mock"},
       "tools": [
@@ -21,7 +21,7 @@
       "tool_executor": {
         "type": "retry",
         "config": {
-          "inner": {"type": "safe", "config": {"default_timeout_ms": 5000}},
+          "inner": {"type": "safe", "config": {"default_timeout_ms": 200}},
           "max_attempts": 3,
           "initial_delay_ms": 50,
           "retry_on": ["RetryableToolError", "ToolTimeoutError"]

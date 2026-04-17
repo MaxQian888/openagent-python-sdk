@@ -43,6 +43,7 @@ from openagents.plugins.builtin.session.jsonl_file import JsonlFileSessionManage
 from openagents.plugins.builtin.session.sqlite_backed import SqliteSessionManager
 from openagents.plugins.builtin.tool_executor.safe import SafeToolExecutor
 from openagents.plugins.builtin.tool_executor.retry import RetryToolExecutor
+from openagents.plugins.builtin.tool_executor.filesystem_aware import FilesystemAwareExecutor
 from openagents.plugins.builtin.tool.common import BuiltinSearchTool
 from openagents.plugins.builtin.tool.datetime_tools import (
     CurrentTimeTool,
@@ -130,6 +131,7 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     "tool_executor": {
         "safe": SafeToolExecutor,
         "retry": RetryToolExecutor,
+        "filesystem_aware": FilesystemAwareExecutor,
     },
     "execution_policy": {},
     "context_assembler": {

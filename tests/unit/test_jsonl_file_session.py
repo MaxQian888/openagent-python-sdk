@@ -95,5 +95,41 @@ async def test_set_state_persists_custom_keys(tmp_path: Path):
     assert state2.get("custom_counter") == 42
 
 
+@pytest.mark.asyncio
+async def test_delete_session_serialized_with_writes(tmp_path: Path):
+    """delete_session must hold the per-session lock so concurrent append cannot
+    resurrect the file after unlink."""
+    import asyncio as _asyncio
+
+    m = _mgr(tmp_path)
+    # Prime the session so the file and lock exist.
+    await m.append_message("s1", {"role": "user", "content": "seed"})
+
+    async def do_delete():
+        await _asyncio.sleep(0)
+        await m.delete_session("s1")
+
+    async def do_append():
+        await _asyncio.sleep(0)
+        await m.append_message("s1", {"role": "user", "content": "late"})
+
+    # Fire concurrently; they will be serialized by the per-session lock.
+    await _asyncio.gather(do_delete(), do_append())
+    # After gather, regardless of order, either:
+    #   (a) delete ran first, append recreated the file with ONE "late" line,
+    #   (b) append ran first, delete removed everything.
+    # Both states are acceptable — the race we are preventing is *interleaving*
+    # that corrupts the file or leaves dangling in-memory state.
+    sessions = await m.list_sessions()
+    if "s1" in sessions:
+        msgs = await m.load_messages("s1")
+        assert msgs == [{"role": "user", "content": "late"}]
+    else:
+        # Fresh manager should see nothing persistent for s1.
+        m2 = _mgr(tmp_path)
+        ids = await m2.list_sessions()
+        assert "s1" not in ids
+
+
 def test_registered_as_builtin():
     assert get_builtin_plugin_class("session", "jsonl_file") is JsonlFileSessionManager

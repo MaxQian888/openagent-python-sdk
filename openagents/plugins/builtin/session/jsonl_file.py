@@ -40,6 +40,13 @@ class JsonlFileSessionManager(SessionManagerPlugin):
     Each mutation writes one line of the form
     ``{"type": "transcript|artifact|checkpoint|state", "data": ..., "ts": ISO}``.
     On first access to a session, prior lines are replayed to rebuild in-memory state.
+
+    Designed for single-runtime deployments. File I/O (`open` / `write` / optional
+    `fsync`) runs synchronously on the event-loop thread, which is fine for typical
+    agent transcripts but will become a bottleneck under heavy concurrent writes;
+    in that regime, put a purpose-built persistence layer behind the seam instead.
+    Session IDs containing dots work correctly via ``Path.stem`` but are not
+    recommended for clarity.
     """
 
     class Config(BaseModel):
@@ -134,13 +141,17 @@ class JsonlFileSessionManager(SessionManagerPlugin):
             self._append(session_id, {"type": "state", "data": payload, "ts": _now()})
 
     async def delete_session(self, session_id: str) -> None:
-        self._states.pop(session_id, None)
-        self._loaded.discard(session_id)
-        path = self._path(session_id)
-        if path.exists():
-            path.unlink()
+        lock = self._locks.setdefault(session_id, asyncio.Lock())
+        async with lock:
+            self._states.pop(session_id, None)
+            self._loaded.discard(session_id)
+            path = self._path(session_id)
+            if path.exists():
+                path.unlink()
 
     async def list_sessions(self) -> list[str]:
+        # `Path.stem` strips only the final suffix, so "sess.1.jsonl" -> "sess.1".
+        # Session IDs containing dots round-trip correctly here and in `_path`.
         disk = {p.stem for p in self._root.glob("*.jsonl")}
         return sorted(disk | set(self._states.keys()))
 

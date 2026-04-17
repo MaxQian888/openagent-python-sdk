@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Awaitable, Callable
 
+from pydantic import BaseModel
+
 from openagents.interfaces.events import (
     EVENT_EMIT,
     EVENT_HISTORY,
@@ -12,25 +14,30 @@ from openagents.interfaces.events import (
     EventBusPlugin,
     RuntimeEvent,
 )
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 logger = logging.getLogger("openagents")
 
 
-class AsyncEventBus(EventBusPlugin):
+class AsyncEventBus(TypedConfigPluginMixin, EventBusPlugin):
     """Async in-memory event bus with history.
 
     Events are stored in memory and can be queried.
     Use for single-instance deployments or testing.
     """
 
+    class Config(BaseModel):
+        max_history: int = 10_000
+
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(
             config=config or {},
             capabilities={EVENT_SUBSCRIBE, EVENT_EMIT, EVENT_HISTORY},
         )
+        self._init_typed_config()
         self._subscribers: dict[str, list[Callable[[RuntimeEvent], Awaitable[None] | None]]] = {}
         self._history: list[RuntimeEvent] = []
-        self._max_history: int = config.get("max_history", 10000) if config else 10000
+        self._max_history: int = self.cfg.max_history
 
     @property
     def history(self) -> list[RuntimeEvent]:

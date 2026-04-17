@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
+
 from openagents.interfaces.response_repair import ResponseRepairDecision, ResponseRepairPolicyPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
-class BasicResponseRepairPolicy(ResponseRepairPolicyPlugin):
+class BasicResponseRepairPolicy(TypedConfigPluginMixin, ResponseRepairPolicyPlugin):
     """Default repair policy that emits a structured error diagnosis."""
+
+    class Config(BaseModel):
+        pass
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config or {}, capabilities=set())
+        self._init_typed_config()
 
     async def repair_empty_response(
         self,

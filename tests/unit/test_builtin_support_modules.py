@@ -153,6 +153,48 @@ async def test_basic_response_repair_policy_reports_diagnostic_metadata():
     }
 
 
+def test_basic_followup_resolver_warns_on_unknown_config_keys(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="openagents.interfaces.typed_config"):
+        BasicFollowupResolver({"totally_unknown": 1})
+
+    assert any(
+        "unknown config keys" in r.message
+        and "BasicFollowupResolver" in r.message
+        and "totally_unknown" in r.message
+        for r in caplog.records
+    )
+
+
+def test_basic_response_repair_policy_warns_on_unknown_config_keys(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="openagents.interfaces.typed_config"):
+        BasicResponseRepairPolicy({"totally_unknown": 1})
+
+    assert any(
+        "unknown config keys" in r.message
+        and "BasicResponseRepairPolicy" in r.message
+        and "totally_unknown" in r.message
+        for r in caplog.records
+    )
+
+
+def test_async_event_bus_warns_on_unknown_config_keys(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="openagents.interfaces.typed_config"):
+        AsyncEventBus({"totally_unknown": 1})
+
+    assert any(
+        "unknown config keys" in r.message
+        and "AsyncEventBus" in r.message
+        and "totally_unknown" in r.message
+        for r in caplog.records
+    )
+
+
 @pytest.mark.asyncio
 async def test_config_watcher_detects_file_changes_and_can_be_stopped(tmp_path):
     config_path = tmp_path / "agent.json"

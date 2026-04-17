@@ -6,6 +6,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
+from pydantic import BaseModel
+
 from openagents.interfaces.session import (
     SESSION_ARTIFACTS,
     SESSION_CHECKPOINTS,
@@ -14,14 +16,18 @@ from openagents.interfaces.session import (
     SESSION_TRANSCRIPT,
     SessionManagerPlugin,
 )
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
-class InMemorySessionManager(SessionManagerPlugin):
+class InMemorySessionManager(TypedConfigPluginMixin, SessionManagerPlugin):
     """In-memory session manager with async locks.
 
     Sessions are stored in memory and will be lost on restart.
     Use for single-instance deployments or testing.
     """
+
+    class Config(BaseModel):
+        pass
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(
@@ -34,6 +40,7 @@ class InMemorySessionManager(SessionManagerPlugin):
                 SESSION_CHECKPOINTS,
             },
         )
+        self._init_typed_config()
         self._locks: dict[str, asyncio.Lock] = {}
         self._states: dict[str, dict] = {}
 

@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
+
 from openagents.interfaces.followup import FollowupResolution, FollowupResolverPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
-class BasicFollowupResolver(FollowupResolverPlugin):
+class BasicFollowupResolver(TypedConfigPluginMixin, FollowupResolverPlugin):
     """Answer simple follow-up questions from local memory/state."""
+
+    class Config(BaseModel):
+        pass
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config or {}, capabilities=set())
+        self._init_typed_config()
 
     async def resolve(self, *, context: Any) -> FollowupResolution | None:
         user_text = str(getattr(context, "input_text", "")).strip().lower()

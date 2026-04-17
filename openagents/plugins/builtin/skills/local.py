@@ -6,7 +6,10 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from openagents.interfaces.skills import SessionSkillSummary, SkillsPlugin
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 
 def _strip_quotes(value: str) -> str:
@@ -49,22 +52,26 @@ def _parse_flat_yaml(path: Path | None) -> dict[str, str]:
     return data
 
 
-class LocalSkillsManager(SkillsPlugin):
+class LocalSkillsManager(TypedConfigPluginMixin, SkillsPlugin):
     """Discover and execute repo-local skill packages."""
 
     _STATE_KEY = "_session_skills"
 
+    class Config(BaseModel):
+        search_paths: list[str] = Field(default_factory=lambda: ["skills"])
+        enabled: list[str] = Field(default_factory=list)
+
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config=config or {}, capabilities=set())
-        raw_paths = self.config.get("search_paths", ["skills"])
+        self._init_typed_config()
         self._search_paths = [
             Path(path).resolve(strict=False)
-            for path in raw_paths
+            for path in self.cfg.search_paths
             if isinstance(path, str) and path.strip()
         ]
         self._enabled = {
             str(name).strip()
-            for name in self.config.get("enabled", [])
+            for name in self.cfg.enabled
             if isinstance(name, str) and name.strip()
         }
         self._packages: dict[str, dict[str, Any]] = {}

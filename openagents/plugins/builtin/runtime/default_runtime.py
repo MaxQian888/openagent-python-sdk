@@ -8,6 +8,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel
+
 from openagents.interfaces.capabilities import (
     MEMORY_INJECT,
     MEMORY_WRITEBACK,
@@ -60,6 +62,7 @@ from openagents.interfaces.tool import (
     ToolExecutor,
     ToolExecutorPlugin,
 )
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 logger = logging.getLogger("openagents")
 
@@ -252,7 +255,7 @@ class _BoundTool:
         return getattr(self._tool, name)
 
 
-class DefaultRuntime(RuntimePlugin):
+class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
     """Default runtime implementation.
 
     Orchestrates agent execution with:
@@ -260,6 +263,13 @@ class DefaultRuntime(RuntimePlugin):
     - Event lifecycle management
     - Memory inject/execute/writeback flow
     """
+
+    class Config(BaseModel):
+        tool_executor: dict[str, Any] | None = None
+        execution_policy: dict[str, Any] | None = None
+        context_assembler: dict[str, Any] | None = None
+        followup_resolver: dict[str, Any] | None = None
+        response_repair_policy: dict[str, Any] | None = None
 
     def __init__(
         self,
@@ -269,6 +279,7 @@ class DefaultRuntime(RuntimePlugin):
             config=config or {},
             capabilities={RUNTIME_RUN},
         )
+        self._init_typed_config()
         self._event_bus: EventBusPlugin | None = None
         self._session_manager: Any | None = None
         self._llm_clients: dict[str, Any | None] = {}
@@ -806,7 +817,9 @@ class DefaultRuntime(RuntimePlugin):
         builtin_factories: dict[str, Any],
         required_methods: tuple[str, ...],
     ) -> Any:
-        raw = self.config.get(key)
+        # Read through self.cfg so unknown top-level runtime config keys are
+        # surfaced via TypedConfigPluginMixin's warning.
+        raw = getattr(self.cfg, key, None)
         if raw is None:
             dependency = default_factory()
             self._bind_runtime_dependency(dependency)

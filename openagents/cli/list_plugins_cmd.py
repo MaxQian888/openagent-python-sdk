@@ -10,11 +10,8 @@ from typing import Any
 from openagents.decorators import (
     _CONTEXT_ASSEMBLER_REGISTRY,
     _EVENT_REGISTRY,
-    _EXECUTION_POLICY_REGISTRY,
-    _FOLLOWUP_RESOLVER_REGISTRY,
     _MEMORY_REGISTRY,
     _PATTERN_REGISTRY,
-    _RESPONSE_REPAIR_POLICY_REGISTRY,
     _RUNTIME_REGISTRY,
     _SESSION_REGISTRY,
     _TOOL_EXECUTOR_REGISTRY,
@@ -29,10 +26,7 @@ _DECORATOR_REGISTRIES: dict[str, dict[str, Any]] = {
     "session": _SESSION_REGISTRY,
     "events": _EVENT_REGISTRY,
     "tool_executor": _TOOL_EXECUTOR_REGISTRY,
-    "execution_policy": _EXECUTION_POLICY_REGISTRY,
     "context_assembler": _CONTEXT_ASSEMBLER_REGISTRY,
-    "followup_resolver": _FOLLOWUP_RESOLVER_REGISTRY,
-    "response_repair_policy": _RESPONSE_REPAIR_POLICY_REGISTRY,
     "tool": _TOOL_REGISTRY,
 }
 

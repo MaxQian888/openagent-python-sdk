@@ -543,16 +543,6 @@ class ContextAwarePattern:
             "transcript_count": len(self.context.transcript),
             "artifact_names": [artifact.name for artifact in self.context.session_artifacts],
             "assembly_metadata": dict(self.context.assembly_metadata),
-            "followup_resolver": (
-                type(self.context.followup_resolver).__name__
-                if self.context.followup_resolver is not None
-                else None
-            ),
-            "response_repair_policy": (
-                type(self.context.response_repair_policy).__name__
-                if self.context.response_repair_policy is not None
-                else None
-            ),
             "state": {
                 "assembler_seen": self.context.state.get("assembler_seen"),
                 "assembler_finalized": self.context.state.get("assembler_finalized"),
@@ -699,6 +689,54 @@ class DenyToolExecutionPolicy:
                 reason=f"Tool '{request.tool_id}' blocked by DenyToolExecutionPolicy",
             )
         return PolicyDecision(allowed=True, metadata={"policy": "custom"})
+
+
+class DenyingToolExecutor:
+    """ToolExecutor whose ``evaluate_policy`` denies listed tools.
+
+    Demonstrates the new pattern for tool-level restrictions after the
+    ``execution_policy`` seam was folded into
+    ``ToolExecutorPlugin.evaluate_policy``.
+    """
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
+        self._deny_tools = set(self.config.get("deny_tools", []))
+
+    async def evaluate_policy(self, request: Any) -> PolicyDecision:
+        if request.tool_id in self._deny_tools:
+            return PolicyDecision(
+                allowed=False,
+                reason=f"Tool '{request.tool_id}' blocked by DenyingToolExecutor",
+            )
+        return PolicyDecision(allowed=True, metadata={"policy": "denying_executor"})
+
+    async def execute(self, request: Any) -> ToolExecutionResult:
+        from openagents.errors.exceptions import ToolError
+
+        decision = await self.evaluate_policy(request)
+        if not decision.allowed:
+            return ToolExecutionResult(
+                tool_id=request.tool_id,
+                success=False,
+                error=decision.reason,
+                exception=ToolError(decision.reason, tool_name=request.tool_id),
+                metadata={"policy": decision.metadata},
+            )
+        data = await request.tool.invoke(request.params or {}, request.context)
+        return ToolExecutionResult(
+            tool_id=request.tool_id,
+            success=True,
+            data=data,
+        )
+
+    async def execute_stream(self, request: Any):
+        decision = await self.evaluate_policy(request)
+        if not decision.allowed:
+            yield {"type": "error", "error": decision.reason}
+            return
+        async for chunk in request.tool.invoke_stream(request.params or {}, request.context):
+            yield chunk
 
 
 class SummarizingContextAssembler:

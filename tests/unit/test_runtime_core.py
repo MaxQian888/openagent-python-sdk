@@ -385,25 +385,6 @@ async def test_session_manager_supports_artifacts_and_checkpoints():
 
 
 @pytest.mark.asyncio
-async def test_runtime_rejects_invalid_execution_policy_dependency():
-    """Test runtime config rejects execution policy without evaluate()."""
-    payload = _minimal_config()
-    payload["runtime"] = {
-        "type": "default",
-        "config": {
-            "execution_policy": {
-                "impl": "tests.fixtures.custom_plugins.CustomTool",
-            }
-        },
-    }
-    config = load_config_dict(payload)
-    runtime = Runtime(config)
-
-    with pytest.raises(TypeError, match="must implement 'evaluate'"):
-        await runtime.run(agent_id="test_agent", session_id="s1", input_text="hello")
-
-
-@pytest.mark.asyncio
 async def test_runtime_rejects_invalid_context_assembler_dependency():
     """Test runtime config rejects context assembler without required methods."""
     payload = _minimal_config()

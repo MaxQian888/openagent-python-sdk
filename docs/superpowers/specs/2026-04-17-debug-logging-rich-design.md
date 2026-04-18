@@ -170,6 +170,7 @@ JSON usage:
 `include_events` / `exclude_events` support `fnmatch`-style globs (`tool.*`, `*.succeeded`). When both are set, `exclude_events` is applied after `include_events` (deny wins).
 
 Symmetry with `FileLoggingEventBus`:
+
 - Same wrapper shape (`inner` + delegate `subscribe`/`emit`/`get_history`/`clear_history`).
 - Shared field names where semantics match (`include_events`, `redact_keys`, `max_value_length`).
 - Construction via decorator `@event_bus("rich_console")`.

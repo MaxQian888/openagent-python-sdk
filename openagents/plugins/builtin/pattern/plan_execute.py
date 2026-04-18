@@ -163,6 +163,19 @@ class PlanExecutePattern(TypedConfigPluginMixin, PatternPlugin):
             {"role": "user", "content": ctx.input_text},
         ]
         raw = await self.call_llm(messages=messages)
+        # Empty-response repair: the planning call is the only LLM boundary
+        # in this pattern, so recover here before downstream parsing turns
+        # empty text into an empty plan.
+        if not (raw or "").strip():
+            repair = await self.repair_empty_response(
+                context=ctx,
+                messages=messages,
+                assistant_content=[],
+                stop_reason=None,
+                retries=0,
+            )
+            if repair is not None and repair.status == "repaired":
+                raw = repair.output
         result = self._parse_llm_response(raw)
 
         plan = result.get("plan", [])
@@ -208,6 +221,16 @@ class PlanExecutePattern(TypedConfigPluginMixin, PatternPlugin):
         """Execute the complete Plan-Execute workflow."""
         self._inject_validation_correction()
         ctx = self.context
+
+        # Followup short-circuit: allow a resolver to answer locally and skip
+        # both planning and execution phases entirely.
+        resolution = await self.resolve_followup(context=ctx)
+        if resolution is not None and resolution.status == "resolved":
+            if ctx.state is not None:
+                ctx.state["_runtime_last_output"] = resolution.output
+                ctx.state["resolved_by"] = "resolve_followup"
+            return resolution.output
+
         if not self._llm_enabled():
             return {"type": "final", "content": "PlanExecute requires LLM"}
 

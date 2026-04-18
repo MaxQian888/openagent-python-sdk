@@ -7,7 +7,10 @@
       "memory": {"type": "window_buffer", "config": {"window_size": 8}},
       "pattern": {
         "impl": "examples.research_analyst.app.followup_pattern.FollowupFirstReActPattern",
-        "config": {"max_steps": 6}
+        "config": {
+          "max_steps": 6,
+          "rules_file": "examples/research_analyst/app/followup_rules.json"
+        }
       },
       "llm": {"provider": "mock"},
       "tools": [
@@ -19,43 +22,23 @@
         {"id": "write_file", "type": "write_file"}
       ],
       "tool_executor": {
-        "type": "retry",
+        "impl": "examples.research_analyst.app.executor.SandboxedResearchExecutor",
         "config": {
-          "inner": {"type": "safe", "config": {"default_timeout_ms": 200}},
+          "read_roots": ["examples/research_analyst/app/fixtures"],
+          "write_roots": ["examples/research_analyst/sessions"],
+          "allow_hosts": ["127.0.0.1", "localhost"],
+          "allow_schemes": ["http"],
+          "applies_to_tools": ["http_request"],
+          "deny_private_networks": false,
+          "default_timeout_ms": 200,
           "max_attempts": 3,
           "initial_delay_ms": 50,
           "retry_on": ["RetryableToolError", "ToolTimeoutError"]
         }
       },
-      "execution_policy": {
-        "type": "composite",
-        "config": {
-          "mode": "all",
-          "policies": [
-            {"type": "filesystem", "config": {
-              "read_roots": ["examples/research_analyst/app/fixtures"],
-              "write_roots": ["examples/research_analyst/sessions"]
-            }},
-            {"type": "network_allowlist", "config": {
-              "allow_hosts": ["127.0.0.1", "localhost"],
-              "allow_schemes": ["http"],
-              "applies_to_tools": ["http_request"],
-              "deny_private_networks": false
-            }}
-          ]
-        }
-      },
       "context_assembler": {
         "type": "head_tail",
         "config": {"max_input_tokens": 6000, "head_messages": 2}
-      },
-      "followup_resolver": {
-        "type": "rule_based",
-        "config": {"rules_file": "examples/research_analyst/app/followup_rules.json"}
-      },
-      "response_repair_policy": {
-        "type": "strict_json",
-        "config": {"fallback_to_basic": true}
       }
     }
   ],

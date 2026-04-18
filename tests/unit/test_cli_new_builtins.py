@@ -9,14 +9,13 @@ import pytest
 
 EXPECTED: list[tuple[str, str]] = [
     ("tool_executor", "retry"),
-    ("execution_policy", "composite"),
-    ("execution_policy", "network_allowlist"),
-    ("followup_resolver", "rule_based"),
+    # execution_policy, followup_resolver, and response_repair_policy builtins
+    # were removed as distinct plugin seams in the seam-consolidation refactor
+    # and no longer register as plugins.
     ("session", "jsonl_file"),
     ("session", "sqlite"),
     ("events", "file_logging"),
     ("events", "otel_bridge"),
-    ("response_repair_policy", "strict_json"),
 ]
 
 

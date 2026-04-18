@@ -93,6 +93,7 @@ def _load_plugin(kind, ref, *, required_methods=()):
 This keeps the warning logic isolated from the actual loading logic and avoids any sentinel-flag bookkeeping.
 
 **Combinator callsite updates** (4 files, mechanical):
+
 - `openagents/plugins/builtin/memory/chain.py:40-50`
 - `openagents/plugins/builtin/tool_executor/retry.py:46-48`
 - `openagents/plugins/builtin/execution_policy/composite.py:31-33`
@@ -396,6 +397,7 @@ Append a section to `docs/migration-0.2-to-0.3.md`:
 ### 6.2 Modified unit test files
 
 For each of the 13 non-tool refactored builtins and the 2 refactored tools, the existing test file (where one exists) gets:
+
 - Existing assertions preserved (no behavior change permitted)
 - One added test: `test_<plugin>_warns_on_unknown_config_keys` using `caplog`
 - Where the test currently inspects `instance.config["key"]`, switch to `instance.cfg.key`
@@ -403,7 +405,9 @@ For each of the 13 non-tool refactored builtins and the 2 refactored tools, the 
 ### 6.3 Integration test updates
 
 `tests/integration/test_research_analyst_example.py:test_research_analyst_end_to_end`:
+
 - Replace the indirect retry proof with a direct assertion on `events.ndjson`:
+
   ```python
   flaky_event = next(
       e for e in events
@@ -413,14 +417,17 @@ For each of the 13 non-tool refactored builtins and the 2 refactored tools, the 
   )
   assert flaky_event["payload"]["executor_metadata"]["retry_attempts"] >= 3
   ```
+
 - Update spec `2026-04-17-builtin-plugins-expansion-design.md` errata §13.2 to mark as resolved.
 
 `tests/integration/test_production_coding_agent_example.py`:
+
 - Scan for any strict-equal assertions on `tool.succeeded` payloads. Convert any such assertion to subset semantics (`>=` or key-by-key) so the new `executor_metadata` field doesn't trip them.
 
 ### 6.4 CLI smoke test
 
 `tests/unit/test_cli_schema.py` (or closest equivalent):
+
 - Verify `openagents schema` now emits Config schemas for the 13 refactored non-tool builtins (previously absent because they had no `class Config`).
 - Verify `openagents list-plugins` output is unchanged.
 
@@ -434,6 +441,7 @@ For each of the 13 non-tool refactored builtins and the 2 refactored tools, the 
 ### 6.6 Regression scan
 
 After implementation:
+
 - `uv run pytest -q`
 - `uv run coverage run -m pytest && uv run coverage report`
 - `uv run python examples/quickstart/run_demo.py` (mock provider)

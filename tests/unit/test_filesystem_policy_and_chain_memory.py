@@ -63,10 +63,10 @@ async def test_filesystem_execution_policy_helpers_and_decisions(tmp_path):
         }
     )
 
-    denied = await policy.evaluate(ToolExecutionRequest(tool_id="delete_file", tool=object(), params={}))
-    not_allowed = await policy.evaluate(ToolExecutionRequest(tool_id="grep_files", tool=object(), params={}))
-    no_paths = await policy.evaluate(ToolExecutionRequest(tool_id="read_file", tool=object(), params={}))
-    read_ok = await policy.evaluate(
+    denied = await policy.evaluate_policy(ToolExecutionRequest(tool_id="delete_file", tool=object(), params={}))
+    not_allowed = await policy.evaluate_policy(ToolExecutionRequest(tool_id="grep_files", tool=object(), params={}))
+    no_paths = await policy.evaluate_policy(ToolExecutionRequest(tool_id="read_file", tool=object(), params={}))
+    read_ok = await policy.evaluate_policy(
         ToolExecutionRequest(
             tool_id="read_file",
             tool=object(),
@@ -74,7 +74,7 @@ async def test_filesystem_execution_policy_helpers_and_decisions(tmp_path):
             execution_spec=ToolExecutionSpec(reads_files=True),
         )
     )
-    read_blocked = await policy.evaluate(
+    read_blocked = await policy.evaluate_policy(
         ToolExecutionRequest(
             tool_id="read_file",
             tool=object(),
@@ -82,7 +82,7 @@ async def test_filesystem_execution_policy_helpers_and_decisions(tmp_path):
             execution_spec=ToolExecutionSpec(reads_files=True),
         )
     )
-    write_blocked = await policy.evaluate(
+    write_blocked = await policy.evaluate_policy(
         ToolExecutionRequest(
             tool_id="write_file",
             tool=object(),
@@ -99,7 +99,7 @@ async def test_filesystem_execution_policy_helpers_and_decisions(tmp_path):
     assert write_blocked.allowed is False and "outside write_roots" in write_blocked.reason
 
     write_only_policy = FilesystemExecutionPolicy({"write_roots": [str(allowed)]})
-    inferred_write_denied = await write_only_policy.evaluate(
+    inferred_write_denied = await write_only_policy.evaluate_policy(
         ToolExecutionRequest(tool_id="write_file", tool=object(), params={"path": str(blocked_file)})
     )
     assert inferred_write_denied.allowed is False
@@ -151,18 +151,9 @@ def test_chain_memory_requires_memories_config():
         ChainMemory({"memories": []})
 
 
-def test_filesystem_execution_policy_warns_on_unknown_config_keys(caplog):
-    import logging
-
-    with caplog.at_level(logging.WARNING, logger="openagents.interfaces.typed_config"):
-        policy = FilesystemExecutionPolicy(
-            {"deny_tools": ["delete_file"], "totally_unknown": 1}
-        )
-
-    assert policy._deny_tools == {"delete_file"}
-    assert any(
-        "unknown config keys" in r.message
-        and "FilesystemExecutionPolicy" in r.message
-        and "totally_unknown" in r.message
-        for r in caplog.records
+def test_filesystem_execution_policy_ignores_unknown_config_keys():
+    """Pydantic's default model_validate silently ignores extra keys."""
+    policy = FilesystemExecutionPolicy(
+        {"deny_tools": ["delete_file"], "totally_unknown": 1}
     )
+    assert policy._deny_tools == {"delete_file"}

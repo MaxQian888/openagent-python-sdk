@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from openagents import followup_resolver, memory, pattern, response_repair_policy, tool
-from openagents.interfaces.followup import FollowupResolution
-from openagents.interfaces.response_repair import ResponseRepairDecision
-from openagents import context_assembler, execution_policy, tool_executor
+from openagents import memory, pattern, tool
+from openagents import context_assembler, tool_executor
 from openagents.interfaces.context import ContextAssemblyResult
 from openagents.interfaces.capabilities import (
     MEMORY_INJECT,
@@ -83,39 +81,6 @@ class DecoratorTool:
     async def invoke(self, params: dict[str, Any], context: Any) -> Any:
         return {"from_decorator": True, "params": params}
 
-@followup_resolver(name="decorated_followup_resolver")
-class DecoratorFollowupResolver:
-    """Follow-up resolver registered via decorator."""
-
-    def __init__(self, config: dict[str, Any] | None = None):
-        self.config = config or {}
-
-    async def resolve(self, *, context: Any) -> FollowupResolution | None:
-        if str(context.input_text).strip() == "what did you do":
-            return FollowupResolution(status="resolved", output="decorated followup")
-        return None
-
-
-@response_repair_policy(name="decorated_response_repair_policy")
-class DecoratorResponseRepairPolicy:
-    """Response repair policy registered via decorator."""
-
-    def __init__(self, config: dict[str, Any] | None = None):
-        self.config = config or {}
-
-    async def repair_empty_response(
-        self,
-        *,
-        context: Any,
-        messages: list[dict[str, Any]],
-        assistant_content: list[dict[str, Any]],
-        stop_reason: str | None,
-        retries: int,
-    ) -> ResponseRepairDecision | None:
-        _ = (context, messages, assistant_content, stop_reason, retries)
-        return ResponseRepairDecision(status="repaired", output="decorated repair")
-
-
 @tool_executor(name="decorated_tool_executor")
 class DecoratorToolExecutor:
     def __init__(self, *, config: dict[str, Any] | None = None):
@@ -138,15 +103,6 @@ class DecoratorToolExecutor:
 
     async def execute_stream(self, request):
         yield {"type": "result", "data": {"decorated": True, "tool_id": request.tool_id}}
-
-
-@execution_policy(name="decorated_execution_policy")
-class DecoratorExecutionPolicy:
-    def __init__(self, *, config: dict[str, Any] | None = None):
-        self.config = config or {}
-
-    async def evaluate(self, request):
-        return type("Decision", (), {"allowed": True, "reason": "", "metadata": {"decorated": True}})()
 
 
 @context_assembler(name="decorated_context_assembler")

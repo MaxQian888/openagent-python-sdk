@@ -447,29 +447,9 @@ class Runtime:
                 "type": agent.tool_executor.type if agent.tool_executor else None,
                 "impl": agent.tool_executor.impl if agent.tool_executor else None,
             },
-            "execution_policy": {
-                "type": agent.execution_policy.type if agent.execution_policy else None,
-                "impl": agent.execution_policy.impl if agent.execution_policy else None,
-            },
             "context_assembler": {
                 "type": agent.context_assembler.type if agent.context_assembler else None,
                 "impl": agent.context_assembler.impl if agent.context_assembler else None,
-            },
-            "followup_resolver": {
-                "type": agent.followup_resolver.type if agent.followup_resolver else None,
-                "impl": agent.followup_resolver.impl if agent.followup_resolver else None,
-            },
-            "response_repair_policy": {
-                "type": (
-                    agent.response_repair_policy.type
-                    if agent.response_repair_policy
-                    else None
-                ),
-                "impl": (
-                    agent.response_repair_policy.impl
-                    if agent.response_repair_policy
-                    else None
-                ),
             },
             "tools": [t.id for t in agent.tools if t.enabled],
             "loaded_plugins": {
@@ -480,24 +460,9 @@ class Runtime:
                     if plugins and plugins.tool_executor
                     else None
                 ),
-                "execution_policy": (
-                    type(plugins.execution_policy).__name__
-                    if plugins and plugins.execution_policy
-                    else None
-                ),
                 "context_assembler": (
                     type(plugins.context_assembler).__name__
                     if plugins and plugins.context_assembler
-                    else None
-                ),
-                "followup_resolver": (
-                    type(plugins.followup_resolver).__name__
-                    if plugins and plugins.followup_resolver
-                    else None
-                ),
-                "response_repair_policy": (
-                    type(plugins.response_repair_policy).__name__
-                    if plugins and plugins.response_repair_policy
                     else None
                 ),
                 "tools": list(plugins.tools.keys()) if plugins else [],

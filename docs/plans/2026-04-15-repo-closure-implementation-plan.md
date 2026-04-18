@@ -13,6 +13,7 @@
 ### Task 1: Lock The Target Repo Contract
 
 **Files:**
+
 - Create: `tests/unit/test_repository_layout.py`
 - Test: `pyproject.toml`
 - Test: `.gitignore`
@@ -28,6 +29,7 @@
 ### Task 2: Rebuild The Documentation Entry Surface
 
 **Files:**
+
 - Create: `README.md`
 - Create: `docs/repository-layout.md`
 - Modify: `README_EN.md`
@@ -46,6 +48,7 @@
 ### Task 3: Remove Historical Test Debt
 
 **Files:**
+
 - Delete: `tests/integration/test_custom_impl_example.py`
 - Delete: `tests/integration/test_runtime_composition_example.py`
 - Delete: `tests/integration/test_openagent_cli_runtime_integration.py`
@@ -62,6 +65,7 @@
 ### Task 4: Fix Ignore Rules And Clean Local Artifacts
 
 **Files:**
+
 - Modify: `.gitignore`
 
 - [ ] **Step 1: Remove ignore rules that hide tracked repo structure such as `docs/`, `examples/`, and `README.md`**
@@ -71,6 +75,7 @@
 ### Task 5: Verify The Closed Repo
 
 **Files:**
+
 - Test: `tests/unit/test_repository_layout.py`
 - Test: `tests/integration/test_runtime_from_config_integration.py`
 - Test: `tests/integration/test_production_coding_agent_example.py`

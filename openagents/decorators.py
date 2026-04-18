@@ -43,10 +43,7 @@ _RUNTIME_REGISTRY: dict[str, type] = {}
 _SESSION_REGISTRY: dict[str, type] = {}
 _EVENT_REGISTRY: dict[str, type] = {}
 _TOOL_EXECUTOR_REGISTRY: dict[str, type] = {}
-_EXECUTION_POLICY_REGISTRY: dict[str, type] = {}
 _CONTEXT_ASSEMBLER_REGISTRY: dict[str, type] = {}
-_FOLLOWUP_RESOLVER_REGISTRY: dict[str, type] = {}
-_RESPONSE_REPAIR_POLICY_REGISTRY: dict[str, type] = {}
 
 
 # Type helpers
@@ -323,26 +320,6 @@ def tool_executor(name: str | None = None):
     return decorator
 
 
-def execution_policy(name: str | None = None):
-    """Decorator to register an execution policy class."""
-    if isinstance(name, type):
-        cls = name
-        policy_name = cls.__name__
-        _register_plugin(registry=_EXECUTION_POLICY_REGISTRY, kind="execution_policy", name=policy_name, plugin=cls)
-        cls._execution_policy_name = policy_name
-        cls._is_execution_policy = True
-        return cls
-
-    def decorator(cls: type) -> type:
-        policy_name = name or cls.__name__
-        _register_plugin(registry=_EXECUTION_POLICY_REGISTRY, kind="execution_policy", name=policy_name, plugin=cls)
-        cls._execution_policy_name = policy_name
-        cls._is_execution_policy = True
-        return cls
-
-    return decorator
-
-
 def context_assembler(name: str | None = None):
     """Decorator to register a context assembler class."""
     if isinstance(name, type):
@@ -358,46 +335,6 @@ def context_assembler(name: str | None = None):
         _register_plugin(registry=_CONTEXT_ASSEMBLER_REGISTRY, kind="context_assembler", name=assembler_name, plugin=cls)
         cls._context_assembler_name = assembler_name
         cls._is_context_assembler = True
-        return cls
-
-    return decorator
-
-
-def followup_resolver(name: str | None = None):
-    """Decorator to register a follow-up resolver class."""
-    if isinstance(name, type):
-        cls = name
-        resolver_name = cls.__name__
-        _register_plugin(registry=_FOLLOWUP_RESOLVER_REGISTRY, kind="followup_resolver", name=resolver_name, plugin=cls)
-        cls._followup_resolver_name = resolver_name
-        cls._is_followup_resolver = True
-        return cls
-
-    def decorator(cls: type) -> type:
-        resolver_name = name or cls.__name__
-        _register_plugin(registry=_FOLLOWUP_RESOLVER_REGISTRY, kind="followup_resolver", name=resolver_name, plugin=cls)
-        cls._followup_resolver_name = resolver_name
-        cls._is_followup_resolver = True
-        return cls
-
-    return decorator
-
-
-def response_repair_policy(name: str | None = None):
-    """Decorator to register a response repair policy class."""
-    if isinstance(name, type):
-        cls = name
-        policy_name = cls.__name__
-        _register_plugin(registry=_RESPONSE_REPAIR_POLICY_REGISTRY, kind="response_repair_policy", name=policy_name, plugin=cls)
-        cls._response_repair_policy_name = policy_name
-        cls._is_response_repair_policy = True
-        return cls
-
-    def decorator(cls: type) -> type:
-        policy_name = name or cls.__name__
-        _register_plugin(registry=_RESPONSE_REPAIR_POLICY_REGISTRY, kind="response_repair_policy", name=policy_name, plugin=cls)
-        cls._response_repair_policy_name = policy_name
-        cls._is_response_repair_policy = True
         return cls
 
     return decorator
@@ -438,24 +375,9 @@ def get_tool_executor(name: str) -> type | None:
     return _TOOL_EXECUTOR_REGISTRY.get(name)
 
 
-def get_execution_policy(name: str) -> type | None:
-    """Get a registered execution policy by name."""
-    return _EXECUTION_POLICY_REGISTRY.get(name)
-
-
 def get_context_assembler(name: str) -> type | None:
     """Get a registered context assembler by name."""
     return _CONTEXT_ASSEMBLER_REGISTRY.get(name)
-
-
-def get_followup_resolver(name: str) -> type | None:
-    """Get a registered follow-up resolver by name."""
-    return _FOLLOWUP_RESOLVER_REGISTRY.get(name)
-
-
-def get_response_repair_policy(name: str) -> type | None:
-    """Get a registered response repair policy by name."""
-    return _RESPONSE_REPAIR_POLICY_REGISTRY.get(name)
 
 
 def list_tools() -> list[str]:
@@ -493,21 +415,6 @@ def list_tool_executors() -> list[str]:
     return list(_TOOL_EXECUTOR_REGISTRY.keys())
 
 
-def list_execution_policies() -> list[str]:
-    """List all registered execution policy names."""
-    return list(_EXECUTION_POLICY_REGISTRY.keys())
-
-
 def list_context_assemblers() -> list[str]:
     """List all registered context assembler names."""
     return list(_CONTEXT_ASSEMBLER_REGISTRY.keys())
-
-
-def list_followup_resolvers() -> list[str]:
-    """List all registered follow-up resolver names."""
-    return list(_FOLLOWUP_RESOLVER_REGISTRY.keys())
-
-
-def list_response_repair_policies() -> list[str]:
-    """List all registered response repair policy names."""
-    return list(_RESPONSE_REPAIR_POLICY_REGISTRY.keys())

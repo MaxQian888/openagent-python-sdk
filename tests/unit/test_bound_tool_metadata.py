@@ -1,4 +1,10 @@
-"""Tests for _BoundTool.invoke metadata passthrough."""
+"""Tests for _BoundTool.invoke metadata passthrough.
+
+Policy evaluation is the executor's responsibility (see
+``test_tool_executor_evaluate_policy.py``). _BoundTool itself no longer
+pre-checks policy — it just dispatches through the executor and
+propagates the resulting :class:`ToolExecutionResult`.
+"""
 
 from __future__ import annotations
 
@@ -8,24 +14,11 @@ import pytest
 
 from openagents.errors.exceptions import ToolError
 from openagents.interfaces.tool import (
-    ExecutionPolicyPlugin,
-    PolicyDecision,
     ToolExecutionRequest,
     ToolExecutionResult,
-    ToolExecutionSpec,
     ToolExecutorPlugin,
 )
 from openagents.plugins.builtin.runtime.default_runtime import _BoundTool
-
-
-class _AllowAllPolicy(ExecutionPolicyPlugin):
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
-        return PolicyDecision(allowed=True)
-
-
-class _DenyPolicy(ExecutionPolicyPlugin):
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
-        return PolicyDecision(allowed=False, reason="nope")
 
 
 class _MetadataExecutor(ToolExecutorPlugin):
@@ -83,7 +76,6 @@ async def test_bound_tool_invoke_returns_full_tool_execution_result():
         tool_id="t",
         tool=_DummyTool(),
         executor=_MetadataExecutor(),
-        policy=_AllowAllPolicy(),
     )
     result = await bound.invoke({}, context=object())
     assert isinstance(result, ToolExecutionResult)
@@ -99,7 +91,6 @@ async def test_bound_tool_invoke_failure_raises_exception():
         tool_id="t",
         tool=_DummyTool(),
         executor=_FailingExecutor(),
-        policy=_AllowAllPolicy(),
     )
     with pytest.raises(ToolError, match="boom"):
         await bound.invoke({}, context=object())
@@ -111,21 +102,8 @@ async def test_bound_tool_invoke_failure_without_exception_raises_runtime_error(
         tool_id="t",
         tool=_DummyTool(),
         executor=_NoExceptionFailingExecutor(),
-        policy=_AllowAllPolicy(),
     )
     with pytest.raises(RuntimeError, match="opaque failure"):
-        await bound.invoke({}, context=object())
-
-
-@pytest.mark.asyncio
-async def test_bound_tool_invoke_denied_by_policy_raises_permission_error():
-    bound = _BoundTool(
-        tool_id="t",
-        tool=_DummyTool(),
-        executor=_MetadataExecutor(),
-        policy=_DenyPolicy(),
-    )
-    with pytest.raises(PermissionError, match="nope"):
         await bound.invoke({}, context=object())
 
 
@@ -145,7 +123,6 @@ async def test_bound_tool_invoke_increments_usage_tool_calls():
         tool_id="t",
         tool=_DummyTool(),
         executor=_MetadataExecutor(),
-        policy=_AllowAllPolicy(),
     )
     await bound.invoke({}, context=ctx)
     assert ctx.usage.tool_calls == 1

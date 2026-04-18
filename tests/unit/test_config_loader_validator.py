@@ -53,13 +53,19 @@ def test_load_config_valid_config(tmp_path):
 
 
 def test_load_config_accepts_agent_level_runtime_seams(tmp_path):
+    """Agent-level ``tool_executor`` and ``context_assembler`` are accepted.
+
+    Post seam-consolidation (11→8 seams) the following agent-level keys were
+    removed and are now rejected by the strict schema:
+    ``execution_policy`` (folded into ``tool_executor.evaluate_policy``),
+    ``followup_resolver`` (folded into ``PatternPlugin.resolve_followup``),
+    ``response_repair_policy`` (folded into
+    ``PatternPlugin.repair_empty_response``).
+    """
     payload = _base_config()
     payload["agents"][0]["tool_executor"] = {
         "impl": "tests.fixtures.custom_plugins.CustomToolExecutor",
         "config": {"name": "agent-level"},
-    }
-    payload["agents"][0]["execution_policy"] = {
-        "impl": "tests.fixtures.custom_plugins.CustomExecutionPolicy",
     }
     payload["agents"][0]["context_assembler"] = {
         "impl": "tests.fixtures.custom_plugins.CustomContextAssembler",
@@ -68,8 +74,24 @@ def test_load_config_accepts_agent_level_runtime_seams(tmp_path):
 
     config = load_config(config_path)
     assert config.agents[0].tool_executor is not None
-    assert config.agents[0].execution_policy is not None
     assert config.agents[0].context_assembler is not None
+    # Removed seams should not be attributes on the schema at all.
+    assert not hasattr(config.agents[0], "execution_policy")
+    assert not hasattr(config.agents[0], "followup_resolver")
+    assert not hasattr(config.agents[0], "response_repair_policy")
+
+
+@pytest.mark.parametrize(
+    "removed_key",
+    ["execution_policy", "followup_resolver", "response_repair_policy"],
+)
+def test_load_config_rejects_removed_seam_keys(tmp_path, removed_key):
+    """Schema is strict (extra='forbid'); old seam keys are rejected."""
+    payload = _base_config()
+    payload["agents"][0][removed_key] = {"impl": "some.module.Thing"}
+    config_path = _write(tmp_path, payload)
+    with pytest.raises(ConfigError, match="Extra inputs are not permitted"):
+        load_config(config_path)
 
 
 def test_load_config_rejects_type_and_impl_together(tmp_path):

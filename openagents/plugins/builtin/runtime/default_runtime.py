@@ -29,9 +29,7 @@ from openagents.interfaces.events import (
     RUN_VALIDATED,
     SESSION_ACQUIRED,
 )
-from openagents.interfaces.followup import FollowupResolverPlugin
 from openagents.interfaces.pattern import PatternPlugin
-from openagents.interfaces.response_repair import ResponseRepairPolicyPlugin
 from openagents.interfaces.runtime import (
     RUN_STOP_COMPLETED,
     RUN_STOP_FAILED,
@@ -53,9 +51,6 @@ from openagents.errors.exceptions import (
 )
 from openagents.interfaces.session import SessionArtifact
 from openagents.interfaces.tool import (
-    ExecutionPolicy,
-    ExecutionPolicyPlugin,
-    PolicyDecision,
     ToolExecutionRequest,
     ToolExecutionResult,
     ToolExecutionSpec,
@@ -98,11 +93,6 @@ def _instantiate(factory: Any, config: dict[str, Any]) -> Any:
         raise TypeError(
             f"Could not instantiate runtime dependency from {factory!r}: {exc}"
         ) from exc
-
-
-class _AllowAllExecutionPolicy(ExecutionPolicyPlugin):
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
-        return PolicyDecision(allowed=True)
 
 
 class _DefaultToolExecutor(ToolExecutorPlugin):
@@ -168,12 +158,10 @@ class _BoundTool:
         tool_id: str,
         tool: Any,
         executor: ToolExecutor,
-        policy: ExecutionPolicy,
     ):
         self._tool_id = tool_id
         self._tool = tool
         self._executor = executor
-        self._policy = policy
 
     def execution_spec(self) -> ToolExecutionSpec:
         get_spec = getattr(self._tool, "execution_spec", None)
@@ -189,6 +177,10 @@ class _BoundTool:
         :func:`unwrap_tool_result` for backward-compatible data access
         and propagates ``executor_metadata`` on the ``tool.succeeded``
         event payload.
+
+        Policy evaluation is now owned by the executor (see
+        :meth:`ToolExecutorPlugin.evaluate_policy`); the bound tool no
+        longer performs a pre-dispatch policy check.
         """
         budget = getattr(getattr(context, "run_request", None), "budget", None)
         usage = getattr(context, "usage", None)
@@ -210,13 +202,7 @@ class _BoundTool:
             execution_spec=self.execution_spec(),
             metadata={"bound_tool": True},
         )
-        decision = await self._policy.evaluate(request)
-        if not decision.allowed:
-            raise PermissionError(decision.reason or f"Tool '{self._tool_id}' denied by policy")
-
-        result = await self._executor.execute(
-            request
-        )
+        result = await self._executor.execute(request)
         if result.success:
             usage = getattr(context, "usage", None)
             if usage is not None:
@@ -235,9 +221,6 @@ class _BoundTool:
             execution_spec=self.execution_spec(),
             metadata={"bound_tool": True},
         )
-        decision = await self._policy.evaluate(request)
-        if not decision.allowed:
-            raise PermissionError(decision.reason or f"Tool '{self._tool_id}' denied by policy")
         async for chunk in self._executor.execute_stream(request):
             yield chunk
 
@@ -268,34 +251,30 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
 
     What:
         Owns the per-run orchestration: acquires the session lock,
-        runs ``context_assembler.assemble``, rebinds tools through
-        ``execution_policy + tool_executor``, then drives
-        ``pattern.setup`` / ``memory.inject`` / ``pattern.execute`` /
-        ``memory.writeback``, finally persists the transcript and
-        artifacts. Emits the full set of lifecycle events declared in
+        runs ``context_assembler.assemble``, rebinds tools through the
+        ``tool_executor`` (which owns policy evaluation internally),
+        then drives ``pattern.setup`` / ``memory.inject`` /
+        ``pattern.execute`` / ``memory.writeback``, finally persists
+        the transcript and artifacts. Emits the full set of lifecycle
+        events declared in
         :data:`openagents.interfaces.event_taxonomy.EVENT_SCHEMAS`.
 
     Usage:
         ``{"runtime": {"type": "default"}}``. Optional
-        per-dependency overrides under ``config.tool_executor``,
-        ``config.execution_policy``, ``config.context_assembler``,
-        ``config.followup_resolver``,
-        ``config.response_repair_policy``.
+        per-dependency overrides under ``config.tool_executor`` and
+        ``config.context_assembler``.
 
     Depends on:
         - ``EventBusPlugin`` (top-level ``events``) for emit
         - ``SessionManagerPlugin`` (top-level ``session``) for state
           and transcript persistence
         - the agent's ``memory`` / ``pattern`` / optional executor
-          and policy plugins
+          plugins
     """
 
     class Config(BaseModel):
         tool_executor: dict[str, Any] | None = None
-        execution_policy: dict[str, Any] | None = None
         context_assembler: dict[str, Any] | None = None
-        followup_resolver: dict[str, Any] | None = None
-        response_repair_policy: dict[str, Any] | None = None
 
     def __init__(
         self,
@@ -310,10 +289,7 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
         self._session_manager: Any | None = None
         self._llm_clients: dict[str, Any | None] = {}
         self._tool_executor: ToolExecutor | None = None
-        self._execution_policy: ExecutionPolicy | None = None
         self._context_assembler: ContextAssemblerPlugin | None = None
-        self._followup_resolver: FollowupResolverPlugin | None = None
-        self._response_repair_policy: ResponseRepairPolicyPlugin | None = None
 
     @property
     def event_bus(self) -> EventBusPlugin:
@@ -381,11 +357,8 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
 
         usage = RunUsage()
         artifacts = []
-        execution_policy = self._resolve_execution_policy(agent_plugins)
         tool_executor = self._resolve_tool_executor(agent_plugins)
         context_assembler = self._resolve_context_assembler(agent_plugins)
-        followup_resolver = self._resolve_followup_resolver(agent_plugins)
-        response_repair_policy = self._resolve_response_repair_policy(agent_plugins)
         started_at = time.perf_counter()
 
         try:
@@ -415,7 +388,7 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                     duration_ms=assemble_duration_ms,
                 )
                 self._apply_runtime_budget(pattern=plugins.pattern, agent=agent)
-                bound_tools = self._bind_tools(plugins.tools, tool_executor, execution_policy)
+                bound_tools = self._bind_tools(plugins.tools, tool_executor)
 
                 await self._setup_pattern(
                     pattern=plugins.pattern,
@@ -428,9 +401,6 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                     session_artifacts=assembly.session_artifacts,
                     assembly_metadata=assembly.metadata,
                     tool_executor=tool_executor,
-                    execution_policy=execution_policy,
-                    followup_resolver=followup_resolver,
-                    response_repair_policy=response_repair_policy,
                     usage=usage,
                     artifacts=artifacts,
                 )
@@ -693,10 +663,9 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
         self,
         tools: dict[str, Any],
         executor: ToolExecutor,
-        policy: ExecutionPolicy,
     ) -> dict[str, Any]:
         return {
-            tool_id: _BoundTool(tool_id=tool_id, tool=tool, executor=executor, policy=policy)
+            tool_id: _BoundTool(tool_id=tool_id, tool=tool, executor=executor)
             for tool_id, tool in tools.items()
         }
 
@@ -727,9 +696,6 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
         session_artifacts: list[Any],
         assembly_metadata: dict[str, Any],
         tool_executor: ToolExecutor,
-        execution_policy: ExecutionPolicy,
-        followup_resolver: Any | None,
-        response_repair_policy: Any | None,
         usage: RunUsage,
         artifacts: list[Any],
     ) -> None:
@@ -749,9 +715,6 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
             "assembly_metadata": assembly_metadata,
             "run_request": request,
             "tool_executor": tool_executor,
-            "execution_policy": execution_policy,
-            "followup_resolver": followup_resolver,
-            "response_repair_policy": response_repair_policy,
             "usage": usage,
             "artifacts": artifacts,
         }
@@ -774,9 +737,6 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
         context.run_request = request
         context.deps = request.deps
         context.tool_executor = tool_executor
-        context.execution_policy = execution_policy
-        context.followup_resolver = followup_resolver
-        context.response_repair_policy = response_repair_policy
         context.usage = usage
         context.artifacts = artifacts
 
@@ -800,29 +760,6 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
             return tool_executor
         return self._get_tool_executor()
 
-    def _get_execution_policy(self) -> ExecutionPolicy:
-        from openagents.plugins.builtin.execution_policy.filesystem import FilesystemExecutionPolicy
-
-        if self._execution_policy is not None:
-            return self._execution_policy
-        self._execution_policy = self._load_runtime_dependency(
-            key="execution_policy",
-            default_factory=_AllowAllExecutionPolicy,
-            builtin_factories={
-                "allow_all": _AllowAllExecutionPolicy,
-                "filesystem": FilesystemExecutionPolicy,
-            },
-            required_methods=("evaluate",),
-        )
-        return self._execution_policy
-
-    def _resolve_execution_policy(self, agent_plugins: Any) -> ExecutionPolicy:
-        execution_policy = getattr(agent_plugins, "execution_policy", None)
-        if execution_policy is not None:
-            self._bind_runtime_dependency(execution_policy)
-            return execution_policy
-        return self._get_execution_policy()
-
     def _get_context_assembler(self) -> ContextAssemblerPlugin:
         from openagents.plugins.builtin.context.truncating import TruncatingContextAssembler
 
@@ -845,46 +782,6 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
             self._bind_runtime_dependency(context_assembler)
             return context_assembler
         return self._get_context_assembler()
-
-    def _get_followup_resolver(self) -> FollowupResolverPlugin:
-        from openagents.plugins.builtin.followup.basic import BasicFollowupResolver
-
-        if self._followup_resolver is not None:
-            return self._followup_resolver
-        self._followup_resolver = self._load_runtime_dependency(
-            key="followup_resolver",
-            default_factory=BasicFollowupResolver,
-            builtin_factories={"basic": BasicFollowupResolver},
-            required_methods=("resolve",),
-        )
-        return self._followup_resolver
-
-    def _resolve_followup_resolver(self, agent_plugins: Any) -> FollowupResolverPlugin:
-        followup_resolver = getattr(agent_plugins, "followup_resolver", None)
-        if followup_resolver is not None:
-            self._bind_runtime_dependency(followup_resolver)
-            return followup_resolver
-        return self._get_followup_resolver()
-
-    def _get_response_repair_policy(self) -> ResponseRepairPolicyPlugin:
-        from openagents.plugins.builtin.response_repair.basic import BasicResponseRepairPolicy
-
-        if self._response_repair_policy is not None:
-            return self._response_repair_policy
-        self._response_repair_policy = self._load_runtime_dependency(
-            key="response_repair_policy",
-            default_factory=BasicResponseRepairPolicy,
-            builtin_factories={"basic": BasicResponseRepairPolicy},
-            required_methods=("repair_empty_response",),
-        )
-        return self._response_repair_policy
-
-    def _resolve_response_repair_policy(self, agent_plugins: Any) -> ResponseRepairPolicyPlugin:
-        response_repair_policy = getattr(agent_plugins, "response_repair_policy", None)
-        if response_repair_policy is not None:
-            self._bind_runtime_dependency(response_repair_policy)
-            return response_repair_policy
-        return self._get_response_repair_policy()
 
     def _load_runtime_dependency(
         self,

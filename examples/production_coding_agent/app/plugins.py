@@ -12,14 +12,11 @@ from openagents.interfaces.capabilities import (
     PATTERN_REACT,
 )
 from openagents.interfaces.context import ContextAssemblyResult
-from openagents.interfaces.followup import FollowupResolution, FollowupResolverPlugin
+from openagents.interfaces.followup import FollowupResolution
 from openagents.interfaces.memory import MemoryPlugin
 from openagents.interfaces.pattern import PatternPlugin
 from openagents.interfaces.run_context import RunContext
-from openagents.interfaces.response_repair import (
-    ResponseRepairDecision,
-    ResponseRepairPolicyPlugin,
-)
+from openagents.interfaces.response_repair import ResponseRepairDecision
 
 from .protocols import DeliveryEnvelope, ProjectBlueprint, TaskPlan, VerificationEnvelope
 
@@ -89,7 +86,9 @@ class CodingMemory(MemoryPlugin):
         return data if isinstance(data, list) else []
 
     def _save_records(self, session_id: str, records: list[dict[str, Any]]) -> None:
-        self._storage_path(session_id).write_text(
+        path = self._storage_path(session_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
             json.dumps(records[-self._max_items :], ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
@@ -181,10 +180,23 @@ class CodingTaskContextAssembler:
         return result
 
 
-class CodingFollowupResolver(FollowupResolverPlugin):
-    """Resolve common local follow-up questions from the coding journal."""
+class ProductionCodingPattern(PatternPlugin):
+    """Production-style coding agent example with explicit planning and delivery.
 
-    async def resolve(self, *, context: Any) -> FollowupResolution | None:
+    With the consolidated seam API, this pattern folds follow-up resolution and
+    empty-response repair into ``resolve_followup()`` and
+    ``repair_empty_response()`` overrides (see below), rather than delegating
+    them to separate ``followup_resolver`` / ``response_repair_policy`` plugins.
+    """
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config or {}, capabilities={PATTERN_EXECUTE, PATTERN_REACT})
+        self.context: RunContext[Any] | None = None
+
+    async def resolve_followup(
+        self, *, context: RunContext[Any]
+    ) -> FollowupResolution | None:
+        """Resolve common local follow-up questions from the coding journal."""
         text = str(context.input_text or "").strip().lower()
         markers = ("你刚干了什么", "上一轮做了什么", "刚才做了什么", "what did you do", "what happened last turn")
         if not any(marker in text for marker in markers):
@@ -202,19 +214,16 @@ class CodingFollowupResolver(FollowupResolverPlugin):
             lines.append(f"输出产物：{', '.join(latest['artifacts'])}")
         return FollowupResolution(status="resolved", output="\n".join(lines), metadata=dict(latest))
 
-
-class CodingResponseRepairPolicy(ResponseRepairPolicyPlugin):
-    """Return a detailed structured diagnostic when the model goes silent."""
-
     async def repair_empty_response(
         self,
         *,
-        context: Any,
+        context: RunContext[Any],
         messages: list[dict[str, Any]],
         assistant_content: list[dict[str, Any]],
         stop_reason: str | None,
         retries: int,
     ) -> ResponseRepairDecision | None:
+        """Return a detailed structured diagnostic when the model goes silent."""
         packet = context.assembly_metadata.get("task_packet", {})
         reason = (
             "LLM returned an empty response during coding-delivery orchestration. "
@@ -224,51 +233,19 @@ class CodingResponseRepairPolicy(ResponseRepairPolicyPlugin):
         )
         return ResponseRepairDecision(status="error", reason=reason, metadata={"stage": "coding-delivery"})
 
-
-class ProductionCodingPattern(PatternPlugin):
-    """Production-style coding agent example with explicit planning and delivery."""
-
-    def __init__(self, config: dict[str, Any] | None = None):
-        super().__init__(config=config or {}, capabilities={PATTERN_EXECUTE, PATTERN_REACT})
-        self.context: RunContext[Any] | None = None
-
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any, transcript: list | None = None, session_artifacts: list | None = None, assembly_metadata: dict | None = None, run_request: Any | None = None, tool_executor: Any | None = None, execution_policy: Any | None = None, followup_resolver: Any | None = None, response_repair_policy: Any | None = None, usage: Any | None = None, artifacts: list[Any] | None = None, **kwargs: Any) -> None:
-        _ = kwargs
-        self.context = RunContext[Any](
-            agent_id=agent_id,
-            session_id=session_id,
-            input_text=input_text,
-            state=state,
-            tools=tools,
-            llm_client=llm_client,
-            llm_options=llm_options,
-            event_bus=event_bus,
-            transcript=list(transcript or []),
-            session_artifacts=list(session_artifacts or []),
-            assembly_metadata=dict(assembly_metadata or {}),
-            run_request=run_request,
-            tool_executor=tool_executor,
-            execution_policy=execution_policy,
-            followup_resolver=followup_resolver,
-            response_repair_policy=response_repair_policy,
-            usage=usage,
-            artifacts=artifacts or [],
-        )
-
     async def react(self) -> dict[str, Any]:
         return {"type": "final", "content": "Use execute()."}
 
     async def execute(self) -> Any:
         ctx = self.context
         assert ctx is not None
-        if ctx.followup_resolver is not None:
-            resolution = await ctx.followup_resolver.resolve(context=ctx)
-            if resolution is not None:
-                if resolution.status == "resolved":
-                    ctx.state["_runtime_last_output"] = resolution.output
-                    return resolution.output
-                if resolution.status == "error":
-                    raise RuntimeError(resolution.reason or "follow-up resolution failed")
+        resolution = await self.resolve_followup(context=ctx)
+        if resolution is not None:
+            if resolution.status == "resolved":
+                ctx.state["_runtime_last_output"] = resolution.output
+                return resolution.output
+            if resolution.status == "error":
+                raise RuntimeError(resolution.reason or "follow-up resolution failed")
         packet = ctx.assembly_metadata.get("task_packet", {})
         if self._should_generate_project(ctx.input_text):
             return await self._generate_project(packet)
@@ -492,11 +469,15 @@ class ProductionCodingPattern(PatternPlugin):
         messages = [{"role": "system", "content": self.compose_system_prompt("You are a disciplined coding-delivery planner.")}, {"role": "user", "content": prompt}]
         raw = await self.call_llm(messages=messages)
         if not str(raw or "").strip():
-            if ctx.response_repair_policy is not None:
-                decision = await ctx.response_repair_policy.repair_empty_response(context=ctx, messages=messages, assistant_content=[], stop_reason=None, retries=0)
-                reason = decision.reason if decision is not None else "LLM returned empty output."
-                raise RuntimeError(reason)
-            raise RuntimeError("LLM returned empty output.")
+            decision = await self.repair_empty_response(
+                context=ctx,
+                messages=messages,
+                assistant_content=[],
+                stop_reason=None,
+                retries=0,
+            )
+            reason = decision.reason if decision is not None else "LLM returned empty output."
+            raise RuntimeError(reason)
         parsed = _safe_json_loads(str(raw))
         return parsed if parsed is not None else fallback
 

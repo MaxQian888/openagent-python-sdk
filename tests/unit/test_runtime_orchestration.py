@@ -1,6 +1,7 @@
 import asyncio
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -228,7 +229,12 @@ async def test_runtime_uses_builtin_safe_tool_executor_timeout():
 
 
 @pytest.mark.asyncio
-async def test_runtime_uses_builtin_filesystem_execution_policy():
+async def test_filesystem_aware_executor_sandboxes_tool_calls():
+    """The builtin ``filesystem_aware`` tool_executor replaces the former
+    agent-level ``execution_policy: filesystem`` seam. It evaluates filesystem
+    policy in ``evaluate_policy()`` and returns a failed ToolExecutionResult
+    on violation — which the runtime surfaces as a failed run.
+    """
     root = Path(".tmp/runtime-filesystem-policy")
     allowed_dir = root / "allowed"
     blocked_dir = root / "blocked"
@@ -243,8 +249,8 @@ async def test_runtime_uses_builtin_filesystem_execution_policy():
         "tests.fixtures.runtime_plugins.InjectWritebackMemory",
         "tests.fixtures.runtime_plugins.ConfigurableToolPattern",
     )
-    payload["agents"][0]["execution_policy"] = {
-        "type": "filesystem",
+    payload["agents"][0]["tool_executor"] = {
+        "type": "filesystem_aware",
         "config": {"read_roots": [str(allowed_dir)], "allow_tools": ["read_file"]},
     }
     payload["agents"][0]["pattern"]["config"] = {
@@ -320,41 +326,54 @@ async def test_runtime_uses_builtin_truncating_context_assembler():
 
 
 @pytest.mark.asyncio
-async def test_runtime_uses_basic_followup_and_response_repair_defaults():
-    payload = _payload(
-        "tests.fixtures.runtime_plugins.InjectWritebackMemory",
-        "tests.fixtures.runtime_plugins.ContextAwarePattern",
-    )
-    config = load_config_dict(payload)
-    runtime = Runtime(config)
+async def test_pattern_resolve_followup_default_abstains():
+    """``PatternPlugin.resolve_followup()`` defaults to ``None`` (abstain).
 
-    result = await runtime.run(
-        agent_id="assistant",
-        session_id="default-seams-session",
-        input_text="hello",
-    )
+    This is the new contract replacing the former
+    ``followup_resolver`` seam: follow-up semantics are opt-in via a
+    pattern subclass override, and the base class abstains so the
+    LLM loop runs normally.
+    """
+    from openagents.interfaces.pattern import PatternPlugin
 
-    assert result["followup_resolver"] == "BasicFollowupResolver"
-    assert result["response_repair_policy"] == "BasicResponseRepairPolicy"
+    class _Pat(PatternPlugin):
+        async def execute(self) -> Any:
+            return None
+
+        async def react(self) -> dict[str, Any]:
+            return {"type": "final", "content": ""}
+
+    p = _Pat(config={}, capabilities=set())
+    res = await p.resolve_followup(context=object())
+    assert res is None
 
 
 @pytest.mark.asyncio
-async def test_runtime_uses_builtin_followup_and_response_repair_defaults():
-    payload = _payload(
-        "tests.fixtures.runtime_plugins.InjectWritebackMemory",
-        "tests.fixtures.runtime_plugins.ContextAwarePattern",
-    )
-    config = load_config_dict(payload)
-    runtime = Runtime(config)
+async def test_pattern_repair_empty_response_default_abstains():
+    """``PatternPlugin.repair_empty_response()`` defaults to ``None`` (abstain).
 
-    result = await runtime.run(
-        agent_id="assistant",
-        session_id="default-seams-session",
-        input_text="hello",
-    )
+    Replaces the former ``response_repair_policy`` seam: empty-response
+    recovery is now an opt-in override on the pattern subclass; the base
+    class abstains so the original empty response propagates.
+    """
+    from openagents.interfaces.pattern import PatternPlugin
 
-    assert result["followup_resolver"] == "BasicFollowupResolver"
-    assert result["response_repair_policy"] == "BasicResponseRepairPolicy"
+    class _Pat(PatternPlugin):
+        async def execute(self) -> Any:
+            return None
+
+        async def react(self) -> dict[str, Any]:
+            return {"type": "final", "content": ""}
+
+    p = _Pat(config={}, capabilities=set())
+    res = await p.repair_empty_response(
+        context=object(),
+        messages=[],
+        assistant_content=[],
+        stop_reason=None,
+        retries=0,
+    )
+    assert res is None
 
 
 @pytest.mark.asyncio
@@ -390,19 +409,21 @@ async def test_runtime_uses_configured_tool_executor():
 
 
 @pytest.mark.asyncio
-async def test_runtime_uses_configured_execution_policy():
+async def test_runtime_respects_executor_evaluate_policy():
+    """Custom ToolExecutor's ``evaluate_policy()`` is honored by the runtime.
+
+    Replaces the former ``test_runtime_uses_configured_execution_policy``.
+    Policy is now owned by the ``ToolExecutor`` (see
+    ``ToolExecutorPlugin.evaluate_policy``); configuring a custom executor
+    that denies a tool must cause the run to fail with the executor's reason.
+    """
     payload = _payload(
         "tests.fixtures.runtime_plugins.InjectWritebackMemory",
         "tests.fixtures.runtime_plugins.ToolCallingPattern",
     )
-    payload["runtime"] = {
-        "type": "default",
-        "config": {
-            "execution_policy": {
-                "impl": "tests.fixtures.runtime_plugins.DenyToolExecutionPolicy",
-                "config": {"deny_tools": ["custom_tool"]},
-            }
-        },
+    payload["agents"][0]["tool_executor"] = {
+        "impl": "tests.fixtures.runtime_plugins.DenyingToolExecutor",
+        "config": {"deny_tools": ["custom_tool"]},
     }
     payload["agents"][0]["tools"] = [
         {"id": "custom_tool", "impl": "tests.fixtures.custom_plugins.CustomTool"}
@@ -419,7 +440,7 @@ async def test_runtime_uses_configured_execution_policy():
     )
 
     assert result.stop_reason == "failed"
-    assert "blocked by DenyToolExecutionPolicy" in (result.error or "")
+    assert "blocked by DenyingToolExecutor" in (result.error or "")
 
 
 @pytest.mark.asyncio

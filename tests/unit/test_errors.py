@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+
 import openagents.errors as errors_pkg
 import openagents.errors.exceptions as errors_mod
 
@@ -67,3 +72,53 @@ def test_model_retry_error_carries_validation_error():
     )
     assert isinstance(err, LLMError)
     assert err.validation_error is None
+
+
+def test_errors_module_imports_when_typing_self_is_unavailable():
+    module_path = (
+        Path(__file__).resolve().parents[2] / "openagents" / "errors" / "exceptions.py"
+    )
+    script = textwrap.dedent(
+        f"""
+        import importlib.abc
+        import importlib.util
+        import sys
+        import types
+        import typing as real_typing
+
+        class _TypingShimLoader(importlib.abc.Loader):
+            def create_module(self, spec):
+                module = types.ModuleType("typing")
+                for name in dir(real_typing):
+                    if name != "Self":
+                        setattr(module, name, getattr(real_typing, name))
+                return module
+
+            def exec_module(self, module):
+                return None
+
+        class _TypingShimFinder(importlib.abc.MetaPathFinder):
+            def find_spec(self, fullname, path, target=None):
+                if fullname == "typing":
+                    return importlib.util.spec_from_loader(fullname, _TypingShimLoader())
+                return None
+
+        sys.modules.pop("typing", None)
+        sys.meta_path.insert(0, _TypingShimFinder())
+
+        module_path = r"{module_path}"
+        spec = importlib.util.spec_from_file_location("compat_exceptions", module_path)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        """
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr

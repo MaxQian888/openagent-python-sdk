@@ -1,59 +1,127 @@
-"""App-layer pattern: consult followup_resolver before running ReAct.
+"""App-layer pattern: rule-based follow-up resolution via ``resolve_followup()``.
 
-This pattern mirrors the idiom established in
-``examples/production_coding_agent/app/plugins.py`` (see the ``execute`` method
-around lines 261–271). The builtin ``react`` pattern does not itself invoke
-``ctx.followup_resolver``; doing so is deliberately an app-layer choice so
-different applications can pick their own short-circuit semantics.
+With the consolidated seam API, follow-up resolution is implemented by
+overriding ``PatternPlugin.resolve_followup()`` (the builtin ``ReActPattern``
+calls this before its LLM loop; returning ``FollowupResolution(status="resolved",
+...)`` short-circuits the loop and skips the LLM entirely).
+
+This example pattern loads a list of regex-to-template rules from a JSON file
+and matches the most recent user message against them — if any rule fires and
+memory has history, the interpolated template is returned directly.
+
+See ``docs/seams-and-extension-points.md`` for the rationale behind making
+follow-up resolution a pattern method rather than a separate seam.
 """
 
 from __future__ import annotations
 
+import collections
+import json
+import re
+from pathlib import Path
 from typing import Any
 
-from openagents.interfaces.pattern import PatternPlugin
+from pydantic import BaseModel, Field
+
+from openagents.errors.exceptions import PluginLoadError
+from openagents.interfaces.followup import FollowupResolution
+from openagents.interfaces.run_context import RunContext
 from openagents.plugins.builtin.pattern.react import ReActPattern
 
 
-class FollowupFirstReActPattern(PatternPlugin):
-    """Consult ``ctx.followup_resolver`` before delegating to ``ReActPattern``.
+class _Rule(BaseModel):
+    name: str
+    pattern: str
+    template: str
+    requires_history: bool = True
 
-    If the resolver returns ``FollowupResolution(status="resolved", ...)``, the
-    pattern returns that output directly without invoking the inner ReAct loop
-    (and therefore without calling the LLM). Any other outcome — ``None``,
-    ``"abstain"``, or ``"error"`` — falls through to the inner pattern, which
-    runs normally.
+
+class FollowupFirstReActPattern(ReActPattern):
+    """ReAct variant that resolves obvious follow-ups from rules before the LLM.
+
+    Subclasses ``ReActPattern`` and overrides ``resolve_followup()`` — when the
+    most recent user message matches one of the configured regex rules (and
+    there is history in memory), the rule's template is rendered and returned,
+    which causes ``ReActPattern.execute()`` to short-circuit without invoking
+    the LLM.
+
+    Config:
+        - ``rules``: list of ``{name, pattern, template, requires_history}``
+        - ``rules_file``: path to a JSON file containing the same shape
+
+    Rules from ``rules_file`` are evaluated before inline ``rules``.
     """
 
-    def __init__(self, config: dict[str, Any] | None = None, inner: Any | None = None):
-        super().__init__(config=config or {}, capabilities={"pattern.execute", "pattern.react"})
-        self._inner = inner if inner is not None else ReActPattern(config=self.config)
+    class Config(ReActPattern.Config):
+        rules_file: str | None = None
+        rules: list[dict[str, Any]] = Field(default_factory=list)
 
-    # Proxy `context` to the inner pattern so the runtime's `setup()` (which
-    # assigns `self.context = RunContext(...)`) propagates correctly into the
-    # delegate, and downstream attribute reads see the same object.
-    @property
-    def context(self) -> Any:
-        return getattr(self._inner, "context", None)
-
-    @context.setter
-    def context(self, value: Any) -> None:
-        self._inner.context = value
-
-    async def execute(self) -> Any:
-        ctx = self._inner.context
-        resolver = getattr(ctx, "followup_resolver", None) if ctx is not None else None
-        if resolver is not None:
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config or {})
+        cfg = self.config or {}
+        rules_file = cfg.get("rules_file")
+        inline_rules = cfg.get("rules") or []
+        file_rules: list[_Rule] = []
+        if rules_file:
+            path = Path(rules_file)
             try:
-                resolution = await resolver.resolve(context=ctx)
-            except Exception:
-                resolution = None
-            if resolution is not None and resolution.status == "resolved":
-                if ctx is not None and hasattr(ctx, "state") and ctx.state is not None:
-                    ctx.state["_runtime_last_output"] = resolution.output
-                    ctx.state["resolved_by"] = "followup_resolver"
-                return resolution.output
-        return await self._inner.execute()
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise PluginLoadError(
+                    f"FollowupFirstReActPattern: could not read rules_file '{rules_file}': {exc}"
+                ) from exc
+            if not isinstance(raw, list):
+                raise PluginLoadError(
+                    f"FollowupFirstReActPattern: rules_file '{rules_file}' must be a JSON array"
+                )
+            for item in raw:
+                file_rules.append(_Rule.model_validate(item))
+        all_rules = [*file_rules, *[_Rule.model_validate(r) for r in inline_rules]]
+        self._rules: list[tuple[_Rule, re.Pattern[str]]] = []
+        for r in all_rules:
+            try:
+                compiled = re.compile(r.pattern, re.IGNORECASE)
+            except re.error as exc:
+                raise PluginLoadError(
+                    f"FollowupFirstReActPattern: invalid pattern in rule '{r.name}': {exc}"
+                ) from exc
+            self._rules.append((r, compiled))
 
-    async def react(self) -> dict[str, Any]:
-        return await self._inner.react()
+    async def resolve_followup(
+        self, *, context: RunContext[Any]
+    ) -> FollowupResolution | None:
+        text = str(getattr(context, "input_text", "") or "")
+        for rule, compiled in self._rules:
+            if not compiled.search(text):
+                continue
+            memory_view = getattr(context, "memory_view", {}) or {}
+            history = memory_view.get("history") if isinstance(memory_view, dict) else None
+            if rule.requires_history and (not isinstance(history, list) or not history):
+                return FollowupResolution(
+                    status="abstain",
+                    reason="no history",
+                    metadata={"rule": rule.name},
+                )
+            last = history[-1] if isinstance(history, list) and history else {}
+            last = last if isinstance(last, dict) else {}
+            tool_ids: list[str] = []
+            raw_tool_results = last.get("tool_results")
+            if isinstance(raw_tool_results, list):
+                for item in raw_tool_results:
+                    if isinstance(item, dict) and isinstance(item.get("tool_id"), str):
+                        tool_ids.append(item["tool_id"])
+            mapping = collections.defaultdict(
+                str,
+                {
+                    "tool_ids": ", ".join(tool_ids),
+                    "last_input": str(last.get("input", "")),
+                    "last_output": str(last.get("output", "")),
+                },
+            )
+            rendered = rule.template.format_map(mapping)
+            return FollowupResolution(
+                status="resolved",
+                output=rendered,
+                metadata={"rule": rule.name},
+            )
+        return None

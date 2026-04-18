@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+from typing import Any, Literal, TypeVar
+
+
+OpenAgentsErrorT = TypeVar("OpenAgentsErrorT", bound="OpenAgentsError")
 
 
 class OpenAgentsError(Exception):
@@ -58,7 +61,7 @@ class OpenAgentsError(Exception):
             parts.append(f"  docs: {self.docs_url}")
         return "\n".join(parts)
 
-    def with_context(self, **kwargs: str | int | None) -> Self:
+    def with_context(self: OpenAgentsErrorT, **kwargs: str | int | None) -> OpenAgentsErrorT:
         """Attach runtime identifiers to an existing exception."""
 
         for key in ("agent_id", "session_id", "run_id", "tool_id", "step_number"):

@@ -84,13 +84,6 @@ class ToolExecutionResult(BaseModel):
 
 
 @runtime_checkable
-class ExecutionPolicy(Protocol):
-    """Policy hook for tool execution."""
-
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision: ...
-
-
-@runtime_checkable
 class ToolExecutor(Protocol):
     """Executor hook between patterns and tool implementations."""
 
@@ -102,17 +95,23 @@ class ToolExecutor(Protocol):
     ) -> AsyncIterator[dict[str, Any]]: ...
 
 
-class ExecutionPolicyPlugin(BasePlugin):
-    """Optional base class for execution policies."""
-
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
-        return PolicyDecision(allowed=True)
-
-
 class ToolExecutorPlugin(BasePlugin):
     """Optional base class for tool executors."""
 
+    async def evaluate_policy(self, request: ToolExecutionRequest) -> PolicyDecision:
+        """Override to restrict tool execution. Default: allow all."""
+        return PolicyDecision(allowed=True)
+
     async def execute(self, request: ToolExecutionRequest) -> ToolExecutionResult:
+        decision = await self.evaluate_policy(request)
+        if not decision.allowed:
+            msg = f"policy denied: {decision.reason}"
+            return ToolExecutionResult(
+                tool_id=request.tool_id,
+                success=False,
+                error=msg,
+                exception=ToolError(msg, tool_name=request.tool_id),
+            )
         try:
             data = await request.tool.invoke(request.params or {}, request.context)
             return ToolExecutionResult(tool_id=request.tool_id, success=True, data=data)
@@ -135,6 +134,10 @@ class ToolExecutorPlugin(BasePlugin):
         self,
         request: ToolExecutionRequest,
     ) -> AsyncIterator[dict[str, Any]]:
+        decision = await self.evaluate_policy(request)
+        if not decision.allowed:
+            msg = f"policy denied: {decision.reason}"
+            raise ToolError(msg, tool_name=request.tool_id)
         async for chunk in request.tool.invoke_stream(request.params or {}, request.context):
             yield chunk
 

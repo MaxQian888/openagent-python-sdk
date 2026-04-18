@@ -14,12 +14,12 @@ from .run_context import RunContext
 from .tool import ToolExecutionResult
 
 if TYPE_CHECKING:
-    from .followup import FollowupResolverPlugin
+    from .followup import FollowupResolution
     from .events import EventBusPlugin
-    from .response_repair import ResponseRepairPolicyPlugin
+    from .response_repair import ResponseRepairDecision
     from .session import SessionArtifact
     from .runtime import RunArtifact, RunRequest, RunUsage
-    from .tool import ExecutionPolicy, ToolExecutor
+    from .tool import ToolExecutor
 
 
 ExecutionContext = RunContext[Any]
@@ -67,9 +67,6 @@ class PatternPlugin(BasePlugin):
         assembly_metadata: dict[str, Any] | None = None,
         run_request: "RunRequest | None" = None,
         tool_executor: "ToolExecutor | None" = None,
-        execution_policy: "ExecutionPolicy | None" = None,
-        followup_resolver: "FollowupResolverPlugin | None" = None,
-        response_repair_policy: "ResponseRepairPolicyPlugin | None" = None,
         usage: "RunUsage | None" = None,
         artifacts: list["RunArtifact"] | None = None,
     ) -> None:
@@ -93,9 +90,6 @@ class PatternPlugin(BasePlugin):
             assembly_metadata=dict(assembly_metadata or {}),
             run_request=run_request,
             tool_executor=tool_executor,
-            execution_policy=execution_policy,
-            followup_resolver=followup_resolver,
-            response_repair_policy=response_repair_policy,
             usage=usage,
             artifacts=artifacts or [],
         )
@@ -364,6 +358,24 @@ class PatternPlugin(BasePlugin):
                 self._format_validation_error(exc),
                 validation_error=exc,
             )
+
+    async def resolve_followup(
+        self, *, context: "RunContext[Any]"
+    ) -> "FollowupResolution | None":
+        """Override to answer follow-ups locally. Return None to abstain (call LLM)."""
+        return None
+
+    async def repair_empty_response(
+        self,
+        *,
+        context: "RunContext[Any]",
+        messages: list[dict[str, Any]],
+        assistant_content: list[dict[str, Any]],
+        stop_reason: str | None,
+        retries: int,
+    ) -> "ResponseRepairDecision | None":
+        """Override to handle bad LLM responses. Return None to abstain (propagate)."""
+        return None
 
     def _format_validation_error(self, exc: "ValidationError") -> str:
         lines = ["The output did not match the expected schema:"]

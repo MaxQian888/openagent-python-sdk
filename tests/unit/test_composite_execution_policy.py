@@ -1,42 +1,33 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from openagents.interfaces.tool import (
-    ExecutionPolicyPlugin,
     PolicyDecision,
     ToolExecutionRequest,
     ToolExecutionSpec,
 )
-from openagents.plugins.builtin.execution_policy.composite import CompositeExecutionPolicy
-from openagents.plugins.registry import get_builtin_plugin_class
+from openagents.plugins.builtin.execution_policy.composite import CompositePolicy
 
 
-class _Allow(ExecutionPolicyPlugin):
+class _Allow:
     def __init__(self, tag: str = "allow"):
-        super().__init__(config={}, capabilities=set())
         self._tag = tag
 
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
+    async def evaluate_policy(self, request: ToolExecutionRequest) -> PolicyDecision:
         return PolicyDecision(allowed=True, reason="allow", metadata={"who": self._tag})
 
 
-class _Deny(ExecutionPolicyPlugin):
+class _Deny:
     def __init__(self, tag: str = "deny"):
-        super().__init__(config={}, capabilities=set())
         self._tag = tag
 
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
+    async def evaluate_policy(self, request: ToolExecutionRequest) -> PolicyDecision:
         return PolicyDecision(allowed=False, reason=f"no:{self._tag}", metadata={"who": self._tag})
 
 
-class _Raise(ExecutionPolicyPlugin):
-    def __init__(self):
-        super().__init__(config={}, capabilities=set())
-
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
+class _Raise:
+    async def evaluate_policy(self, request: ToolExecutionRequest) -> PolicyDecision:
         raise RuntimeError("boom")
 
 
@@ -44,24 +35,10 @@ def _req() -> ToolExecutionRequest:
     return ToolExecutionRequest(tool_id="x", tool=object(), execution_spec=ToolExecutionSpec())
 
 
-def _build(children: list, mode: str = "all") -> CompositeExecutionPolicy:
-    """Build a CompositeExecutionPolicy and override its children list for test isolation.
-
-    Uses a single throwaway real builtin ('filesystem' with empty config) at construction
-    time so the loader path is exercised; then swaps in the scripted test children.
-    """
-    cp = CompositeExecutionPolicy(config={
-        "policies": [{"type": "filesystem", "config": {}}],
-        "mode": mode,
-    })
-    cp._children = children
-    return cp
-
-
 @pytest.mark.asyncio
 async def test_all_mode_first_deny_wins():
-    cp = _build([_Allow(), _Deny(tag="d1"), _Deny(tag="d2")], mode="all")
-    decision = await cp.evaluate(_req())
+    cp = CompositePolicy(children=[_Allow(), _Deny(tag="d1"), _Deny(tag="d2")], mode="all")
+    decision = await cp.evaluate_policy(_req())
     assert decision.allowed is False
     assert "d1" in decision.reason
     assert decision.metadata["decided_by"] == 1
@@ -69,8 +46,8 @@ async def test_all_mode_first_deny_wins():
 
 @pytest.mark.asyncio
 async def test_all_allow_passes():
-    cp = _build([_Allow(), _Allow()])
-    decision = await cp.evaluate(_req())
+    cp = CompositePolicy(children=[_Allow(), _Allow()], mode="all")
+    decision = await cp.evaluate_policy(_req())
     assert decision.allowed is True
     assert decision.metadata["policy"] == "composite"
     assert len(decision.metadata["children"]) == 2
@@ -78,25 +55,25 @@ async def test_all_allow_passes():
 
 @pytest.mark.asyncio
 async def test_any_mode_first_allow_wins():
-    cp = _build([_Deny(tag="d"), _Allow()], mode="any")
-    decision = await cp.evaluate(_req())
+    cp = CompositePolicy(children=[_Deny(tag="d"), _Allow()], mode="any")
+    decision = await cp.evaluate_policy(_req())
     assert decision.allowed is True
     assert decision.metadata["decided_by"] == 1
 
 
 @pytest.mark.asyncio
-async def test_empty_policies_allows():
-    # Build with empty list by going through the constructor path.
-    cp = CompositeExecutionPolicy(config={"policies": [], "mode": "all"})
-    decision = await cp.evaluate(_req())
+async def test_empty_children_allows():
+    cp = CompositePolicy(children=[], mode="all")
+    decision = await cp.evaluate_policy(_req())
     assert decision.allowed is True
     assert decision.metadata["children"] == []
+    assert decision.metadata["decided_by"] == "default"
 
 
 @pytest.mark.asyncio
 async def test_child_exception_wrapped_as_deny():
-    cp = _build([_Raise()])
-    decision = await cp.evaluate(_req())
+    cp = CompositePolicy(children=[_Raise()], mode="all")
+    decision = await cp.evaluate_policy(_req())
     assert decision.allowed is False
     assert "raised" in decision.reason
     assert decision.metadata["error_type"] == "RuntimeError"
@@ -104,11 +81,40 @@ async def test_child_exception_wrapped_as_deny():
 
 @pytest.mark.asyncio
 async def test_any_mode_all_deny_returns_last_reason():
-    cp = _build([_Deny(tag="a"), _Deny(tag="b")], mode="any")
-    decision = await cp.evaluate(_req())
+    cp = CompositePolicy(children=[_Deny(tag="a"), _Deny(tag="b")], mode="any")
+    decision = await cp.evaluate_policy(_req())
     assert decision.allowed is False
     assert "b" in decision.reason
+    assert decision.metadata["decided_by"] == "none_allowed"
 
 
-def test_registered_as_builtin():
-    assert get_builtin_plugin_class("execution_policy", "composite") is CompositeExecutionPolicy
+@pytest.mark.asyncio
+async def test_composite_with_real_helpers():
+    """Integration smoke test: combine FilesystemExecutionPolicy + NetworkAllowlistExecutionPolicy."""
+    from openagents.plugins.builtin.execution_policy.filesystem import FilesystemExecutionPolicy
+    from openagents.plugins.builtin.execution_policy.network import NetworkAllowlistExecutionPolicy
+
+    fs = FilesystemExecutionPolicy({"deny_tools": ["delete_file"]})
+    net = NetworkAllowlistExecutionPolicy({"allow_hosts": ["api.example.com"]})
+    cp = CompositePolicy(children=[fs, net], mode="all")
+
+    # A tool neither filesystem nor network cares about should pass both.
+    request = ToolExecutionRequest(
+        tool_id="some_tool",
+        tool=object(),
+        params={},
+        execution_spec=ToolExecutionSpec(),
+    )
+    decision = await cp.evaluate_policy(request)
+    assert decision.allowed is True
+
+    # A denied tool should be blocked by the filesystem child.
+    denied_request = ToolExecutionRequest(
+        tool_id="delete_file",
+        tool=object(),
+        params={},
+        execution_spec=ToolExecutionSpec(),
+    )
+    denied = await cp.evaluate_policy(denied_request)
+    assert denied.allowed is False
+    assert denied.metadata["decided_by"] == 0

@@ -1,54 +1,37 @@
-"""Composite execution policy (AND/OR combinator)."""
+"""Composite policy helper (AND/OR combinator)."""
 
 from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
-
-from openagents.interfaces.tool import (
-    ExecutionPolicyPlugin,
-    PolicyDecision,
-    ToolExecutionRequest,
-)
+from openagents.interfaces.tool import PolicyDecision, ToolExecutionRequest
 
 
-class CompositeExecutionPolicy(ExecutionPolicyPlugin):
-    """Combine multiple execution policies with AND (``all``) or OR (``any``) semantics.
+class CompositePolicy:
+    """Combine multiple policy helpers with AND (``all``) or OR (``any``) semantics.
 
-    What:
-        Loads each child policy via the plugin loader and combines
-        their decisions. ``mode='all'`` denies if any child denies;
-        ``mode='any'`` allows if any child allows. Useful for
-        layering filesystem + network + custom policies.
+    Accepts a list of already-instantiated policy helpers (e.g. FilesystemExecutionPolicy,
+    NetworkAllowlistExecutionPolicy) rather than config dicts. Each child must expose
+    ``async evaluate_policy(request) -> PolicyDecision``.
 
     Usage:
-        ``{"execution_policy": {"type": "composite", "config":
-        {"mode": "all", "policies": [{"type": "filesystem", "config":
-        {...}}, {"type": "network_allowlist", "config": {...}}]}}}``
-
-    Depends on:
-        - :func:`openagents.plugins.loader.load_plugin` for child
-          policies
+        children = [
+            FilesystemExecutionPolicy(config={"read_roots": ["./data"]}),
+            NetworkAllowlistExecutionPolicy(config={"allow_hosts": ["api.example.com"]}),
+        ]
+        composite = CompositePolicy(children=children, mode="all")
+        decision = await composite.evaluate_policy(request)
     """
 
-    class Config(BaseModel):
-        policies: list[dict[str, Any]]
-        mode: Literal["all", "any"] = "all"
+    def __init__(
+        self,
+        children: list[Any],
+        mode: Literal["all", "any"] = "all",
+    ):
+        self._children = children
+        self._mode = mode
 
-    def __init__(self, config: dict[str, Any] | None = None):
-        super().__init__(config=config or {}, capabilities=set())
-        cfg = self.Config.model_validate(self.config)
-        self._mode = cfg.mode
-        self._children = [self._load_child(ref) for ref in cfg.policies]
-
-    def _load_child(self, ref: dict[str, Any]) -> Any:
-        from openagents.config.schema import ExecutionPolicyRef
-        from openagents.plugins.loader import load_plugin
-
-        return load_plugin("execution_policy", ExecutionPolicyRef(**ref), required_methods=("evaluate",))
-
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
+    async def evaluate_policy(self, request: ToolExecutionRequest) -> PolicyDecision:
         child_metadata: list[dict[str, Any]] = []
         if not self._children:
             return PolicyDecision(
@@ -57,7 +40,7 @@ class CompositeExecutionPolicy(ExecutionPolicyPlugin):
             )
         for index, child in enumerate(self._children):
             try:
-                decision = await child.evaluate(request)
+                decision = await child.evaluate_policy(request)
             except Exception as exc:
                 return PolicyDecision(
                     allowed=False,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -73,6 +74,21 @@ async def test_write_failure_does_not_break_emit(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("builtins.open", boom)
     await bus.emit("x")  # must not raise
     assert captured == ["x"]
+
+
+@pytest.mark.asyncio
+async def test_emit_recreates_log_dir_if_removed_after_init(tmp_path: Path):
+    bus = _make(tmp_path / "nested")
+    log_dir = tmp_path / "nested"
+    shutil.rmtree(log_dir)
+
+    await bus.emit("tick", n=1)
+
+    log_path = log_dir / "events.ndjson"
+    assert log_path.exists()
+    parsed = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+    assert parsed["name"] == "tick"
+    assert parsed["payload"]["n"] == 1
 
 
 @pytest.mark.asyncio

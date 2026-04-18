@@ -1,7 +1,8 @@
 """Run the research-analyst example against the local stub server.
 
-This demo mostly serves as a smoke test that the config parses, all seven
-new builtins load, and the session / event-log files are written to
+This demo mostly serves as a smoke test that the config parses, the custom
+``SandboxedResearchExecutor`` + ``FollowupFirstReActPattern`` load cleanly,
+and the session / event-log files are written to
 ``examples/research_analyst/sessions/``. It uses the mock LLM provider, so
 the agent will not drive a meaningful tool-use loop — for that, see the
 integration test in tests/integration/.
@@ -44,7 +45,7 @@ async def main() -> None:
         except Exception as exc:
             print(f"  [expected with mock provider] run raised: {type(exc).__name__}: {exc}")
 
-        print("[research_analyst] Run #2: follow-up question (rule_based resolver)")
+        print("[research_analyst] Run #2: follow-up question (pattern.resolve_followup override)")
         try:
             second = await runtime.run(
                 agent_id="research-analyst",

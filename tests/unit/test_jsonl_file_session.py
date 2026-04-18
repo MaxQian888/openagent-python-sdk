@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -129,6 +130,19 @@ async def test_delete_session_serialized_with_writes(tmp_path: Path):
         m2 = _mgr(tmp_path)
         ids = await m2.list_sessions()
         assert "s1" not in ids
+
+
+@pytest.mark.asyncio
+async def test_append_recreates_root_dir_if_removed_after_init(tmp_path: Path):
+    m = _mgr(tmp_path)
+    sessions_root = tmp_path / "sessions"
+    shutil.rmtree(sessions_root)
+
+    await m.append_message("s1", {"role": "user", "content": "hi"})
+
+    assert (sessions_root / "s1.jsonl").exists()
+    m2 = _mgr(tmp_path)
+    assert await m2.load_messages("s1") == [{"role": "user", "content": "hi"}]
 
 
 def test_registered_as_builtin():

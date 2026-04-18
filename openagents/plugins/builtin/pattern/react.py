@@ -219,6 +219,18 @@ class ReActPattern(TypedConfigPluginMixin, PatternPlugin):
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        # Empty-response repair: if the LLM produced nothing, call the
+        # repair_empty_response() override to synthesize a recovery.
+        if not (raw or "").strip():
+            repair = await self.repair_empty_response(
+                context=ctx,
+                messages=messages,
+                assistant_content=[],
+                stop_reason=None,
+                retries=0,
+            )
+            if repair is not None and repair.status == "repaired":
+                raw = repair.output
         action = self._parse_llm_action(raw)
         if action.get("type") == "tool_call":
             tool_id = action.get("tool") or action.get("tool_id")
@@ -282,6 +294,18 @@ class ReActPattern(TypedConfigPluginMixin, PatternPlugin):
         """Execute the complete ReAct loop."""
         self._inject_validation_correction()
         ctx = self.context
+
+        # Followup short-circuit: allow a resolver to answer locally and skip
+        # the LLM loop entirely. Mirrors the app-layer idiom in
+        # examples/research_analyst/app/followup_pattern.py but now default
+        # for all builtin patterns via the resolve_followup() override.
+        resolution = await self.resolve_followup(context=ctx)
+        if resolution is not None and resolution.status == "resolved":
+            if ctx.state is not None:
+                ctx.state["_runtime_last_output"] = resolution.output
+                ctx.state["resolved_by"] = "resolve_followup"
+            return resolution.output
+
         allowed_action_types = {"tool_call", "final", "continue"}
         max_steps = self._max_steps()
         timeout_s = self._step_timeout_ms() / 1000

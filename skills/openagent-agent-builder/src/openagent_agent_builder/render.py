@@ -18,19 +18,38 @@ def _merge_mapping(base: dict[str, Any], override: dict[str, Any]) -> dict[str, 
     return result
 
 
-def _build_execution_policy(payload: OpenAgentSkillInput, tool_ids: list[str]) -> dict[str, Any] | None:
-    if not payload.workspace_root:
+def _build_tool_executor(
+    payload: OpenAgentSkillInput, tool_ids: list[str]
+) -> dict[str, Any] | None:
+    """Build a filesystem-aware tool executor config from workspace constraints.
+
+    The legacy `execution_policy` seam has been consolidated into the
+    `tool_executor` seam via the `FilesystemAwareExecutor` builtin. When the
+    payload specifies a workspace root, we surface it as read/write sandbox
+    roots so path-mutating tools remain scoped to the intended project.
+
+    Returns ``None`` when neither a workspace root nor a tool allowlist is
+    present (in that case the archetype default — typically the plain ``safe``
+    executor — is preferred).
+    """
+    workspace_root = getattr(payload, "workspace_root", None)
+    if not workspace_root and not tool_ids:
         return None
 
-    writes = any(tool_id in {"write_file", "delete_file"} for tool_id in tool_ids)
-    read_only = bool(payload.constraints.get("read_only"))
-    config: dict[str, Any] = {
-        "allow_tools": tool_ids,
-        "read_roots": [payload.workspace_root],
+    config: dict[str, Any] = {}
+    if tool_ids:
+        config["allow_tools"] = list(tool_ids)
+    if workspace_root:
+        config["read_roots"] = [workspace_root]
+        config["write_roots"] = [workspace_root]
+
+    if not config:
+        return None
+
+    return {
+        "type": "filesystem_aware",
+        "config": config,
     }
-    if writes and not read_only:
-        config["write_roots"] = [payload.workspace_root]
-    return {"type": "filesystem", "config": config}
 
 
 def _filter_tools(archetype_tools: list[dict[str, Any]], allowed_tools: list[str]) -> list[dict[str, Any]]:
@@ -45,9 +64,17 @@ def render_agent_spec(payload: OpenAgentSkillInput, archetype: dict[str, Any]) -
     agent_name = payload.overrides.get("agent_name") or archetype["agent_name"]
     tools = _filter_tools(archetype.get("tools", []), payload.available_tools)
     tool_ids = [tool["id"] for tool in tools]
-    execution_policy = archetype.get("execution_policy")
-    if execution_policy is None:
-        execution_policy = _build_execution_policy(payload, tool_ids)
+    archetype_tool_executor = archetype.get("tool_executor")
+    if archetype_tool_executor is None:
+        archetype_tool_executor = _build_tool_executor(payload, tool_ids)
+    else:
+        # If the archetype supplied its own executor but the payload carries
+        # workspace/tool constraints, the filesystem_aware config still wins —
+        # an explicit workspace_root is a stronger signal than a generic
+        # archetype default.
+        filesystem_aware = _build_tool_executor(payload, tool_ids)
+        if filesystem_aware is not None and getattr(payload, "workspace_root", None):
+            archetype_tool_executor = filesystem_aware
 
     runtime_config = _merge_mapping(archetype["runtime"], payload.constraints)
     agent_config: dict[str, Any] = {
@@ -56,11 +83,8 @@ def render_agent_spec(payload: OpenAgentSkillInput, archetype: dict[str, Any]) -
         "memory": deepcopy(archetype["memory"]),
         "pattern": deepcopy(archetype["pattern"]),
         "llm": deepcopy(archetype["llm"]),
-        "tool_executor": deepcopy(archetype.get("tool_executor")),
-        "execution_policy": deepcopy(execution_policy),
+        "tool_executor": deepcopy(archetype_tool_executor),
         "context_assembler": deepcopy(archetype.get("context_assembler")),
-        "followup_resolver": deepcopy(archetype.get("followup_resolver")),
-        "response_repair_policy": deepcopy(archetype.get("response_repair_policy")),
         "tools": tools,
         "runtime": runtime_config,
     }
@@ -71,10 +95,7 @@ def render_agent_spec(payload: OpenAgentSkillInput, archetype: dict[str, Any]) -
         "pattern",
         "llm",
         "tool_executor",
-        "execution_policy",
         "context_assembler",
-        "followup_resolver",
-        "response_repair_policy",
         "runtime",
     ):
         override_value = overrides.get(key)
@@ -88,10 +109,7 @@ def render_agent_spec(payload: OpenAgentSkillInput, archetype: dict[str, Any]) -
     # Drop optional per-agent seams that resolved to None; AppConfig defaults handle them.
     for optional_key in (
         "tool_executor",
-        "execution_policy",
         "context_assembler",
-        "followup_resolver",
-        "response_repair_policy",
     ):
         if agent_config.get(optional_key) is None:
             agent_config.pop(optional_key, None)

@@ -1,4 +1,4 @@
-"""Filesystem-oriented execution policy."""
+"""Filesystem-oriented execution policy helper."""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from openagents.interfaces.tool import ExecutionPolicyPlugin, PolicyDecision, ToolExecutionRequest
-from openagents.interfaces.typed_config import TypedConfigPluginMixin
+from openagents.interfaces.tool import PolicyDecision, ToolExecutionRequest
 
 
 _READ_TOOL_IDS = {"read_file", "list_files", "grep_files", "ripgrep"}
@@ -44,8 +43,8 @@ def _is_within(path: Path, roots: list[Path]) -> bool:
     return False
 
 
-class FilesystemExecutionPolicy(TypedConfigPluginMixin, ExecutionPolicyPlugin):
-    """Builtin policy for filesystem-oriented workloads.
+class FilesystemExecutionPolicy:
+    """Builtin policy helper for filesystem-oriented workloads.
 
     What:
         Allows/denies the standard read_/write_/list_/grep_/ripgrep
@@ -54,10 +53,8 @@ class FilesystemExecutionPolicy(TypedConfigPluginMixin, ExecutionPolicyPlugin):
         traversal that would escape the declared roots.
 
     Usage:
-        ``{"execution_policy": {"type": "filesystem", "config":
-        {"read_roots": ["./data"], "write_roots": ["./out"],
-        "allow_tools": ["read_file"], "deny_tools":
-        ["delete_file"]}}}``
+        Embed in a custom ToolExecutorPlugin.evaluate_policy() override, or
+        use FilesystemAwareExecutor (builtin) which wraps this helper.
 
     Depends on:
         - request.params (for path keys: ``path``, ``file_path``,
@@ -71,14 +68,13 @@ class FilesystemExecutionPolicy(TypedConfigPluginMixin, ExecutionPolicyPlugin):
         deny_tools: list[str] = Field(default_factory=list)
 
     def __init__(self, config: dict[str, Any] | None = None):
-        super().__init__(config=config or {}, capabilities=set())
-        self._init_typed_config()
-        self._read_roots = _normalize_roots(self.cfg.read_roots)
-        self._write_roots = _normalize_roots(self.cfg.write_roots)
-        self._allow_tools = set(self.cfg.allow_tools)
-        self._deny_tools = set(self.cfg.deny_tools)
+        cfg = self.Config.model_validate(config or {})
+        self._read_roots = _normalize_roots(cfg.read_roots)
+        self._write_roots = _normalize_roots(cfg.write_roots)
+        self._allow_tools = set(cfg.allow_tools)
+        self._deny_tools = set(cfg.deny_tools)
 
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
+    async def evaluate_policy(self, request: ToolExecutionRequest) -> PolicyDecision:
         if request.tool_id in self._deny_tools:
             return PolicyDecision(allowed=False, reason=f"Tool '{request.tool_id}' is denied")
 

@@ -8,6 +8,17 @@ kernel protocol 对象上。
 - 对应实施计划：`docs/superpowers/plans/2026-04-16-openagents-sdk-kernel-completeness-implementation-plan.md`
 - 变更清单：[CHANGELOG.md](../CHANGELOG.md)
 
+## 破坏性变更速查表
+
+| 变更 | 场景 | 影响 |
+|------|------|------|
+| `context_assembler: summarizing` → `truncating` | 所有用旧名的配置 | **必须改**：旧名触发 `PluginLoadError` |
+| `_load_plugin` → `load_plugin`（公开） | 自定义 combinator plugin | 需改（旧名发 `DeprecationWarning`） |
+| `tool.succeeded` payload 增加 `executor_metadata` | 解析 payload 的订阅方 | 只读 `tool_id`/`result` 的不受影响 |
+| `_BoundTool.invoke()` 返回 `ToolExecutionResult` | 直接调用 `tool.invoke()` 的自定义 pattern | 用 `unwrap_tool_result(result)` 兼容两种形态 |
+| 内置插件未知 config key 发警告 | 有多余配置键的 `agent.json` | 检查日志；下一 major 改为错误 |
+| 覆盖率门槛 90% → 92% | fork 了本仓库的 CI | 更新 `pyproject.toml` |
+
 ## 按使用场景分类
 
 ### 场景 A：我只调用 `Runtime.run_detailed`，没有自定义 pattern

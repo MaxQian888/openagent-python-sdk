@@ -7,11 +7,8 @@ from typing import Any
 from openagents.decorators import (
     _CONTEXT_ASSEMBLER_REGISTRY,
     _EVENT_REGISTRY,
-    _EXECUTION_POLICY_REGISTRY,
-    _FOLLOWUP_RESOLVER_REGISTRY,
     _MEMORY_REGISTRY,
     _PATTERN_REGISTRY,
-    _RESPONSE_REPAIR_POLICY_REGISTRY,
     _RUNTIME_REGISTRY,
     _SESSION_REGISTRY,
     _TOOL_REGISTRY,
@@ -26,11 +23,6 @@ from openagents.plugins.builtin.context.truncating import TruncatingContextAssem
 from openagents.plugins.builtin.context.head_tail import HeadTailContextAssembler
 from openagents.plugins.builtin.context.sliding_window import SlidingWindowContextAssembler
 from openagents.plugins.builtin.context.importance_weighted import ImportanceWeightedContextAssembler
-from openagents.plugins.builtin.execution_policy.filesystem import FilesystemExecutionPolicy
-from openagents.plugins.builtin.execution_policy.composite import CompositeExecutionPolicy
-from openagents.plugins.builtin.execution_policy.network import NetworkAllowlistExecutionPolicy
-from openagents.plugins.builtin.followup.basic import BasicFollowupResolver
-from openagents.plugins.builtin.followup.rule_based import RuleBasedFollowupResolver
 from openagents.plugins.builtin.memory.buffer import BufferMemory
 from openagents.plugins.builtin.memory.chain import ChainMemory
 from openagents.plugins.builtin.memory.mem0_memory import Mem0Memory
@@ -39,13 +31,12 @@ from openagents.plugins.builtin.pattern.plan_execute import PlanExecutePattern
 from openagents.plugins.builtin.pattern.react import ReActPattern
 from openagents.plugins.builtin.pattern.reflexion import ReflexionPattern
 from openagents.plugins.builtin.runtime.default_runtime import DefaultRuntime
-from openagents.plugins.builtin.response_repair.basic import BasicResponseRepairPolicy
-from openagents.plugins.builtin.response_repair.strict_json import StrictJsonResponseRepairPolicy
 from openagents.plugins.builtin.session.in_memory import InMemorySessionManager
 from openagents.plugins.builtin.session.jsonl_file import JsonlFileSessionManager
 from openagents.plugins.builtin.session.sqlite_backed import SqliteSessionManager
 from openagents.plugins.builtin.tool_executor.safe import SafeToolExecutor
 from openagents.plugins.builtin.tool_executor.retry import RetryToolExecutor
+from openagents.plugins.builtin.tool_executor.filesystem_aware import FilesystemAwareExecutor
 from openagents.plugins.builtin.tool.common import BuiltinSearchTool
 from openagents.plugins.builtin.tool.datetime_tools import (
     CurrentTimeTool,
@@ -94,10 +85,7 @@ _DECORATOR_REGISTRY_MAP: dict[str, dict[str, type[Any]]] = {
     "events": _EVENT_REGISTRY,
     "skills": {},
     "tool_executor": _TOOL_EXECUTOR_REGISTRY,
-    "execution_policy": _EXECUTION_POLICY_REGISTRY,
     "context_assembler": _CONTEXT_ASSEMBLER_REGISTRY,
-    "followup_resolver": _FOLLOWUP_RESOLVER_REGISTRY,
-    "response_repair_policy": _RESPONSE_REPAIR_POLICY_REGISTRY,
     "tool": _TOOL_REGISTRY,
 }
 
@@ -133,25 +121,13 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     "tool_executor": {
         "safe": SafeToolExecutor,
         "retry": RetryToolExecutor,
-    },
-    "execution_policy": {
-        "filesystem": FilesystemExecutionPolicy,
-        "composite": CompositeExecutionPolicy,
-        "network_allowlist": NetworkAllowlistExecutionPolicy,
+        "filesystem_aware": FilesystemAwareExecutor,
     },
     "context_assembler": {
         "truncating": TruncatingContextAssembler,
         "head_tail": HeadTailContextAssembler,
         "sliding_window": SlidingWindowContextAssembler,
         "importance_weighted": ImportanceWeightedContextAssembler,
-    },
-    "followup_resolver": {
-        "basic": BasicFollowupResolver,
-        "rule_based": RuleBasedFollowupResolver,
-    },
-    "response_repair_policy": {
-        "basic": BasicResponseRepairPolicy,
-        "strict_json": StrictJsonResponseRepairPolicy,
     },
     "tool": {
         "builtin_search": BuiltinSearchTool,

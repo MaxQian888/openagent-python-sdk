@@ -13,6 +13,7 @@
 ### Task 1: Add Coverage Tooling
 
 **Files:**
+
 - Modify: `pyproject.toml`
 
 - [ ] **Step 1: Add `coverage[toml]` to dev dependencies**
@@ -22,6 +23,7 @@
 ### Task 2: Lock Coverage Regression Tests
 
 **Files:**
+
 - Create or modify: focused test files under `tests/unit/`
 
 - [ ] **Step 1: Write failing tests for the first uncovered public surface**
@@ -32,6 +34,7 @@
 ### Task 3: Close High-Leverage Module Gaps
 
 **Files:**
+
 - Modify: `tests/unit/test_exports_and_entrypoints.py` if created
 - Modify: `tests/unit/test_runtime_sync_helpers.py`
 - Modify: `tests/unit/test_hotreload.py`
@@ -46,6 +49,7 @@
 ### Task 4: Verify The Target
 
 **Files:**
+
 - Test: `pyproject.toml`
 - Test: `tests/unit/`
 - Test: `tests/integration/`

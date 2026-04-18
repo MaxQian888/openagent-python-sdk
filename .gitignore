@@ -1,16 +1,43 @@
-.ace-tool/
-.claude/
-.venv/
-.pytest_cache/
-.uv-cache/
-.agent_memory/
+# Python
 __pycache__/
 *.py[cod]
+*.pyd
+*.egg
 *.egg-info/
-*.env
-.coverage
+.eggs/
+
+# Virtual environments & package managers
+.venv/
+.uv-cache/
+
+# Build & distribution
+build/
 dist/
+
+# Testing & coverage
+.pytest_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+
+# Type checking & linting
+.mypy_cache/
+.ruff_cache/
+
+# Environment & secrets
+*.env
+
+# Tooling
+.ace-tool/
+.claude/
+.tmp
+*.log
+
+# Agent runtime state
+.agent_memory/
+
+# Example outputs
 examples/research_analyst/sessions/
 examples/production_coding_agent/outputs/*
 !examples/production_coding_agent/outputs/README.md
-.tmp

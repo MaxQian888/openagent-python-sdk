@@ -36,9 +36,6 @@
         "config": {
           "default_timeout_ms": 2000
         }
-      },
-      "response_repair_policy": {
-        "impl": "examples.production_coding_agent.app.plugins.CodingResponseRepairPolicy"
       }
     }
   },
@@ -84,12 +81,6 @@
           "max_workspace_files": 40
         }
       },
-      "followup_resolver": {
-        "impl": "examples.production_coding_agent.app.plugins.CodingFollowupResolver"
-      },
-      "response_repair_policy": {
-        "impl": "examples.production_coding_agent.app.plugins.CodingResponseRepairPolicy"
-      },
       "llm": {
         "provider": "anthropic",
         "api_base": "${LLM_API_BASE}",
@@ -99,8 +90,8 @@
         "max_tokens": 2048,
         "timeout_ms": 60000
       },
-      "execution_policy": {
-        "type": "filesystem",
+      "tool_executor": {
+        "type": "filesystem_aware",
         "config": {
           "read_roots": [
             "examples/production_coding_agent/workspace",

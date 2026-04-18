@@ -1,4 +1,4 @@
-"""Network allowlist execution policy."""
+"""Network allowlist execution policy helper."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field
 
 from openagents.interfaces.tool import (
-    ExecutionPolicyPlugin,
     PolicyDecision,
     ToolExecutionRequest,
 )
@@ -32,7 +31,7 @@ def _is_private(host: str) -> bool:
     return False
 
 
-class NetworkAllowlistExecutionPolicy(ExecutionPolicyPlugin):
+class NetworkAllowlistExecutionPolicy:
     """Allowlist host/scheme for network-flavored tools (e.g. ``http_request``).
 
     What:
@@ -43,9 +42,8 @@ class NetworkAllowlistExecutionPolicy(ExecutionPolicyPlugin):
         ``applies_to_tools`` always pass.
 
     Usage:
-        ``{"execution_policy": {"type": "network_allowlist", "config":
-        {"allow_hosts": ["api.example.com"], "allow_schemes":
-        ["https"], "deny_private_networks": true}}}``
+        Embed in a custom ToolExecutorPlugin.evaluate_policy() override, or
+        combine with other helpers via CompositePolicy.
 
     Depends on:
         - request.params (``url`` / ``host`` keys)
@@ -58,8 +56,7 @@ class NetworkAllowlistExecutionPolicy(ExecutionPolicyPlugin):
         deny_private_networks: bool = True
 
     def __init__(self, config: dict[str, Any] | None = None):
-        super().__init__(config=config or {}, capabilities=set())
-        cfg = self.Config.model_validate(self.config)
+        cfg = self.Config.model_validate(config or {})
         self._allow_hosts = [h.lower() for h in cfg.allow_hosts]
         self._allow_schemes = {s.lower() for s in cfg.allow_schemes}
         self._applies = set(cfg.applies_to_tools)
@@ -76,7 +73,7 @@ class NetworkAllowlistExecutionPolicy(ExecutionPolicyPlugin):
                 return True
         return False
 
-    async def evaluate(self, request: ToolExecutionRequest) -> PolicyDecision:
+    async def evaluate_policy(self, request: ToolExecutionRequest) -> PolicyDecision:
         if request.tool_id not in self._applies:
             return PolicyDecision(allowed=True, metadata={"policy": "network_allowlist", "skipped": True})
         url = (request.params or {}).get("url", "")

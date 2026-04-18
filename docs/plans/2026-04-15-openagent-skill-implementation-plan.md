@@ -13,6 +13,7 @@
 ### Task 1: Create Core Models
 
 **Files:**
+
 - Create: `openagents/agent_builder/__init__.py`
 - Create: `openagents/agent_builder/models.py`
 - Test: `tests/unit/test_agent_builder_models.py`
@@ -70,6 +71,7 @@ Expected: PASS
 ### Task 2: Add Archetype Selection
 
 **Files:**
+
 - Create: `openagents/agent_builder/archetypes.py`
 - Test: `tests/unit/test_agent_builder_archetypes.py`
 
@@ -116,6 +118,7 @@ Expected: PASS
 ### Task 3: Render Runnable Agent Spec
 
 **Files:**
+
 - Create: `openagents/agent_builder/render.py`
 - Test: `tests/unit/test_agent_builder_render.py`
 
@@ -172,6 +175,7 @@ Expected: PASS
 ### Task 4: Add Smoke Runner
 
 **Files:**
+
 - Create: `openagents/agent_builder/smoke.py`
 - Test: `tests/unit/test_agent_builder_smoke.py`
 
@@ -220,6 +224,7 @@ Expected: PASS
 ### Task 5: Compose The Shared Builder
 
 **Files:**
+
 - Create: `openagents/agent_builder/builder.py`
 - Test: `tests/unit/test_agent_builder_builder.py`
 
@@ -279,6 +284,7 @@ Expected: PASS
 ### Task 6: Add Main-Agent Adapter
 
 **Files:**
+
 - Create: `openagents/agent_builder/host_adapter.py`
 - Test: `tests/unit/test_agent_builder_host_adapter.py`
 
@@ -318,6 +324,7 @@ Expected: PASS
 ### Task 7: Deliver Codex / Claude Skill Wrapper
 
 **Files:**
+
 - Create: `skills/openagent-agent-builder/SKILL.md`
 - Create: `skills/openagent-agent-builder/agents/openai.yaml`
 - Create: `skills/openagent-agent-builder/references/architecture.md`
@@ -358,6 +365,7 @@ Expected: PASS
 ### Task 8: Add Documentation And Final Verification
 
 **Files:**
+
 - Modify: `docs/README.md`
 - Modify: `docs/examples.md`
 - Create: `docs/openagent-agent-builder.md`

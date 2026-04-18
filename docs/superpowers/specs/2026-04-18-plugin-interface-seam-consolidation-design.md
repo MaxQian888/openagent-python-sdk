@@ -119,6 +119,7 @@ of the protocol surface.
 ## Public API Changes
 
 The following symbols in `openagents/__init__.py` and `__all__` will be removed:
+
 - Decorators: `@execution_policy`, `@followup_resolver`, `@response_repair_policy`
 - Registry accessors: `get_execution_policy`, `get_followup_resolver`, `get_response_repair_policy`
 - Registry listers: `list_followup_resolvers`

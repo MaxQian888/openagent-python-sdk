@@ -12,7 +12,11 @@
 ### Core 入口
 
 - `AppConfig`
+- `LocalSkillsManager`
 - `Runtime`
+- `RunContext`
+- `SessionSkillSummary`
+- `SkillsPlugin`
 - `load_config`
 - `load_config_dict`
 - `run_agent`
@@ -20,6 +24,21 @@
 - `run_agent_detailed_with_config`
 - `run_agent_with_config`
 - `run_agent_with_dict`
+
+### 流式 API（0.3.0 新增）
+
+- `RunStreamChunk`
+- `RunStreamChunkKind`
+
+### 错误类型（0.3.0 新增）
+
+- `ModelRetryError` — pattern 可抛出以请求模型重试
+- `OutputValidationError` — 结构化输出校验在用尽重试次数后抛出
+
+### Skills（0.3.0 新增）
+
+- `LocalSkillsManager`
+- `SessionSkillSummary`
 
 ### Decorator
 
@@ -54,11 +73,12 @@
 - `list_tool_executors`
 - `list_context_assemblers`
 
-> Post 2026-04-18 seam-consolidation：`execution_policy` / `followup_resolver` /
-> `response_repair_policy` 三套 decorator / registry 已移除。
-> - tool 权限 → `ToolExecutorPlugin.evaluate_policy()`
-> - follow-up → `PatternPlugin.resolve_followup()`
-> - empty response repair → `PatternPlugin.repair_empty_response()`
+!!! note "seam 合并（2026-04-18）"
+    `execution_policy` / `followup_resolver` / `response_repair_policy`
+    三套 decorator / registry 已移除。
+    - tool 权限 → `ToolExecutorPlugin.evaluate_policy()`
+    - follow-up → `PatternPlugin.resolve_followup()`
+    - empty response repair → `PatternPlugin.repair_empty_response()`
 
 ## 2. Runtime facade
 
@@ -87,6 +107,13 @@
 
 结构化入口。  
 如果你在做更高层的 runtime / framework / product，优先用这个。
+
+### `async runtime.run_stream(*, request: RunRequest) -> AsyncGenerator[RunStreamChunk, None]`
+
+流式入口（0.3.0 新增）。异步生成器，按序产出 `RunStreamChunk` 对象。  
+最后一个 chunk 的 `kind` 为 `RUN_FINISHED`，携带完整的 `RunResult`。
+
+详见 [流式 API 深度指南](stream-api.md)。
 
 ### `runtime.run_sync(*, agent_id: str, session_id: str, input_text: str) -> Any`
 
@@ -154,7 +181,149 @@
 
 直接从 Python dict 做同步运行。
 
-## 4. 配置对象
+### `stream_agent_with_dict(payload, *, request: RunRequest) -> Generator[RunStreamChunk]`
+
+从 Python dict 同步流式运行（0.3.0 新增）。  
+在非 async 上下文中使用；不可在已运行的 event loop 内调用。
+
+### `stream_agent_with_config(config_path, *, request: RunRequest) -> Generator[RunStreamChunk]`
+
+从 JSON 配置文件路径同步流式运行（0.3.0 新增）。  
+内部调用 `stream_agent_with_dict`。
+
+## 4. 流式 API（Streaming）
+
+### `RunStreamChunkKind`
+
+`str` 枚举，表示 chunk 的来源事件类型：
+
+| 枚举成员 | 值 | 描述 |
+| --- | --- | --- |
+| `RUN_STARTED` | `run.started` | run 开始 |
+| `LLM_DELTA` | `llm.delta` | LLM 增量文本输出 |
+| `LLM_FINISHED` | `llm.finished` | 单次 LLM 调用完成 |
+| `TOOL_STARTED` | `tool.started` | 工具即将执行 |
+| `TOOL_DELTA` | `tool.delta` | 工具流式输出 |
+| `TOOL_FINISHED` | `tool.finished` | 工具执行结束（成功或失败） |
+| `ARTIFACT` | `artifact` | artifact 已产出 |
+| `VALIDATION_RETRY` | `validation.retry` | 结构化输出校验失败，正在重试 |
+| `RUN_FINISHED` | `run.finished` | run 完成（终结 chunk） |
+
+### `RunStreamChunk`
+
+| 字段 | 类型 | 描述 |
+| --- | --- | --- |
+| `kind` | `RunStreamChunkKind` | chunk 类型 |
+| `run_id` | `str` | 对应的 run ID |
+| `session_id` | `str` | 所属 session |
+| `agent_id` | `str` | 所属 agent |
+| `sequence` | `int` | 单次 run 内单调递增，可用于断连检测 |
+| `timestamp_ms` | `int` | Unix 毫秒时间戳 |
+| `payload` | `dict[str, Any]` | 事件特定数据（见下表） |
+| `result` | `RunResult \| None` | 仅 `RUN_FINISHED` chunk 携带此字段 |
+
+**各 kind 的 payload 关键字段：**
+
+| Kind | payload 字段 |
+| --- | --- |
+| `llm.delta` | `text: str` |
+| `llm.finished` | `model: str` |
+| `tool.started` | `tool_id: str`, `params: dict` |
+| `tool.delta` | `tool_id: str`, `text: str` |
+| `tool.finished` | `tool_id: str`, `result: Any`（成功）或 `error: str`（失败） |
+| `artifact` | `name: str`, `kind: str`, `payload: Any` |
+| `validation.retry` | `attempt: int`, `error: str` |
+
+!!! tip
+    `sequence` 字段在 run 范围内保证单调递增。消费者可通过检测序号跳跃来判断是否发生了断连。
+
+## 5. 结构化输出
+
+`RunRequest.output_type` 接受一个 Pydantic 模型类，runtime 会用它对最终输出进行校验：
+
+```python
+from pydantic import BaseModel
+from openagents.interfaces.runtime import RunRequest, RunBudget
+
+class Answer(BaseModel):
+    value: str
+    confidence: float
+
+request = RunRequest(
+    agent_id="assistant",
+    session_id="s1",
+    input_text="What is 2+2?",
+    output_type=Answer,
+    budget=RunBudget(max_validation_retries=3),
+)
+result = await runtime.run_detailed(request=request)
+answer: Answer = result.final_output
+```
+
+**校验重试机制：**
+
+1. pattern 执行完成后，runtime 对 `final_output` 做 Pydantic 校验。
+2. 失败时，错误信息注入 `context.scratch["last_validation_error"]`，并向 event bus 发送 `validation.retry` 事件。
+3. runtime 重新进入 `pattern.execute()`，pattern 可读取 scratch 调整输出。
+4. 超过 `RunBudget.max_validation_retries`（默认 3）次后，抛出 `OutputValidationError`。
+
+**相关符号：**
+
+- `RunRequest.output_type: type[T] | None` — 目标 Pydantic 模型
+- `RunBudget.max_validation_retries: int | None = 3` — 最大校验重试次数
+- `OutputValidationError` — 重试耗尽后抛出；携带 `output_type`、`attempts`、`last_validation_error`
+- `ModelRetryError` — pattern 可主动抛出，请求 runtime 重试当前步骤
+
+## 6. 成本追踪
+
+### `RunUsage` 成本字段
+
+| 字段 | 类型 | 描述 |
+| --- | --- | --- |
+| `cost_usd` | `float \| None` | 本次 run 的总美元成本（当 LLM 能提供 token 计数时自动计算） |
+| `cost_breakdown` | `dict[str, float]` | 按成本类别分解（如 `input`、`output`、`cached_read`） |
+
+### LLM 定价配置
+
+在 `llm` 配置中添加 `pricing` 字段可覆盖内置价格表（单位：每百万 token 美元）：
+
+```json
+{
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6",
+    "pricing": {
+      "input": 3.00,
+      "output": 15.00,
+      "cached_read": 0.30,
+      "cached_write": 3.75
+    }
+  }
+}
+```
+
+### 内置价格表
+
+**Anthropic（每百万 token，美元）：**
+
+| 模型 | input | output | cached_read | cached_write |
+| --- | --- | --- | --- | --- |
+| `claude-opus-4-6` | 15.00 | 75.00 | 1.50 | 18.75 |
+| `claude-sonnet-4-6` | 3.00 | 15.00 | 0.30 | 3.75 |
+| `claude-haiku-4-5` | 0.80 | 4.00 | 0.08 | 1.00 |
+
+**OpenAI / openai_compatible（每百万 token，美元）：**
+
+| 模型 | input | output | cached_read |
+| --- | --- | --- | --- |
+| `gpt-4o` | 2.50 | 10.00 | 1.25 |
+| `gpt-4o-mini` | 0.15 | 0.60 | 0.075 |
+| `o1` | 15.00 | 60.00 | 7.50 |
+
+!!! note
+    `RunBudget.max_cost_usd` 设置后，当累计成本超过限额时，runtime 会以 `stop_reason=budget_exhausted` 终止 run。
+
+## 7. 配置对象
 
 ### `AppConfig`
 
@@ -165,6 +334,8 @@
 - `runtime: RuntimeRef`
 - `session: SessionRef`
 - `events: EventBusRef`
+- `skills: SkillsRef`
+- `logging: LoggingConfig | None`
 
 ### `AgentDefinition`
 
@@ -180,87 +351,97 @@
 - `tools: list[ToolRef]`
 - `runtime: RuntimeOptions`
 
-> `execution_policy` / `followup_resolver` / `response_repair_policy` 三个字段在
-> 2026-04-18 seam 合并中移除；strict schema 会拒绝这些旧 key。
+!!! warning
+    `execution_policy` / `followup_resolver` / `response_repair_policy` 三个字段在
+    2026-04-18 seam 合并中已移除；strict schema 会拒绝这些旧 key。
 
 ### `RuntimeOptions`
 
 字段：
 
-- `max_steps`
-- `step_timeout_ms`
-- `session_queue_size`
-- `event_queue_size`
+- `max_steps: int = 16`
+- `step_timeout_ms: int = 30000`
+- `session_queue_size: int = 1000`
+- `event_queue_size: int = 2000`
 
 ### `LLMOptions`
 
 字段：
 
-- `provider`
-- `model`
-- `api_base`
-- `api_key_env`
-- `temperature`
-- `max_tokens`
-- `timeout_ms`
-- `stream_endpoint`
-- `extra`
+- `provider: str = "mock"` — `"anthropic"` / `"openai_compatible"` / `"mock"`
+- `model: str | None`
+- `api_base: str | None` — `openai_compatible` 必须提供
+- `api_key_env: str | None`
+- `temperature: float | None`
+- `max_tokens: int | None`
+- `timeout_ms: int = 30000`
+- `stream_endpoint: str | None`
+- `pricing: LLMPricing | None` — 覆盖内置价格表
 
-## 5. Runtime protocol
+## 8. Runtime protocol
 
 ### `RunBudget`
 
 单次 run 的可选限制：
 
-- `max_steps`
-- `max_duration_ms`
-- `max_tool_calls`
+| 字段 | 类型 | 默认值 | 描述 |
+| --- | --- | --- | --- |
+| `max_steps` | `int \| None` | `None` | 最大步数 |
+| `max_duration_ms` | `int \| None` | `None` | 最大执行时长（毫秒） |
+| `max_tool_calls` | `int \| None` | `None` | 最大工具调用次数 |
+| `max_validation_retries` | `int \| None` | `3` | 结构化输出校验最大重试次数 |
+| `max_cost_usd` | `float \| None` | `None` | 最大成本上限（美元） |
 
 ### `RunArtifact`
 
 run 产物：
 
-- `name`
-- `kind`
-- `payload`
-- `metadata`
+- `name: str`
+- `kind: str = "generic"`
+- `payload: Any`
+- `metadata: dict[str, Any]`
 
 ### `RunUsage`
 
 run 的 usage 聚合：
 
-- `llm_calls`
-- `tool_calls`
-- `input_tokens`
-- `output_tokens`
-- `total_tokens`
+- `llm_calls: int`
+- `tool_calls: int`
+- `input_tokens: int`
+- `output_tokens: int`
+- `total_tokens: int`
+- `input_tokens_cached: int`
+- `input_tokens_cache_creation: int`
+- `cost_usd: float | None`
+- `cost_breakdown: dict[str, float]`
 
 ### `RunRequest`
 
 结构化输入：
 
-- `agent_id`
-- `session_id`
-- `input_text`
-- `run_id`
-- `parent_run_id`
-- `metadata`
-- `context_hints`
-- `budget`
-- `deps`
+- `agent_id: str`
+- `session_id: str`
+- `input_text: str`
+- `run_id: str` — 默认 UUID4 自动生成
+- `parent_run_id: str | None`
+- `metadata: dict[str, Any]`
+- `context_hints: dict[str, Any]`
+- `budget: RunBudget | None`
+- `deps: Any`
+- `output_type: type[BaseModel] | None` — 结构化输出目标类型（0.3.0 新增）
 
-### `RunResult`
+### `RunResult[T]`
 
-结构化输出：
+结构化输出（泛型，0.3.0 起）：
 
-- `run_id`
-- `final_output`
-- `stop_reason`
-- `usage`
-- `artifacts`
-- `error`
-- `exception`
-- `metadata`
+- `run_id: str`
+- `final_output: T | None`
+- `stop_reason: StopReason`
+- `usage: RunUsage`
+- `artifacts: list[RunArtifact]`
+- `error: str | None`
+- `exception: OpenAgentsError | None`
+- `metadata: dict[str, Any]`
 
 ### `StopReason`
 
@@ -273,7 +454,7 @@ run 的 usage 聚合：
 - `max_steps`
 - `budget_exhausted`
 
-## 6. RunContext
+## 9. RunContext
 
 `RunContext` 是 pattern 和 tool 真正消费的运行态对象。
 
@@ -307,7 +488,7 @@ run 的 usage 聚合：
 
 这是 app-defined middle protocol 最重要的 carrier。
 
-## 7. Tool execution protocol
+## 10. Tool execution protocol
 
 ### `ToolExecutionSpec`
 
@@ -351,7 +532,7 @@ policy 输出：
 - `exception`
 - `metadata`
 
-## 8. Context assembly protocol
+## 11. Context assembly protocol
 
 ### `ContextAssemblyResult`
 
@@ -361,7 +542,7 @@ policy 输出：
 - `session_artifacts`
 - `metadata`
 
-## 9. Follow-up / response repair protocol
+## 12. Follow-up / response repair protocol
 
 ### `FollowupResolution`
 
@@ -393,7 +574,7 @@ policy 输出：
 - `abstain`
 - `error`
 
-## 10. Session protocol
+## 13. Session protocol
 
 ### `SessionArtifact`
 
@@ -414,7 +595,7 @@ policy 输出：
 - `artifact_count`
 - `created_at`
 
-## 11. Plugin contract
+## 14. Plugin contract
 
 ### `ToolPlugin`
 
@@ -515,14 +696,14 @@ policy 输出：
 - `async clear_history() -> None`
 - `async close() -> None`
 
-## 12. Registry helper
+## 15. Registry helper
 
 `get_*` helper 返回的是 decorator registry 里的类。  
 `list_*` helper 返回的是 decorator registry 里的名称。
 
 它们不是 builtin registry 的完整替代品。
 
-## 13. Plugin authoring helpers
+## 16. Plugin authoring helpers
 
 供自定义 combinator 与 pattern 作者使用的公开 helper。
 
@@ -535,17 +716,17 @@ policy 输出：
 `openagents.plugins.loader._load_plugin` 仍保留为 deprecated 别名，
 会发 `DeprecationWarning`。
 
-## 14. 错误与诊断 helper（Spec B WP1 / WP2）
+## 17. 错误与诊断 helper（Spec B WP1 / WP2）
 
 | Symbol | Module | Purpose |
 | --- | --- | --- |
-| `OpenAgentsError(message, *, hint=None, docs_url=None, ...)` | `openagents.errors.exceptions` | 基类异常；新增可选 `hint` / `docs_url`。`str(exc)` 在被设置时会多输出 `  hint: ...` / `  docs: ...` 行，首行保持原 message 不变 |
+| `OpenAgentsError(message, *, hint=None, docs_url=None, ...)` | `openagents.errors.exceptions` | 基类异常；新增可选 `hint` / `docs_url`。`str(exc)` 在被设置时会多输出 `hint: ...` / `docs: ...` 行，首行保持原 message 不变 |
 | `near_match(needle, candidates, *, cutoff=0.6)` | `openagents.errors.suggestions` | 轻量 "did you mean?" 包装，基于 `difflib.get_close_matches`；返回最近匹配或 `None` |
 | `EVENT_SCHEMAS` | `openagents.interfaces.event_taxonomy` | 已声明事件名 → `EventSchema(name, required_payload, optional_payload, description)` 的字典。`AsyncEventBus.emit` 在缺少必需 key 时 `logger.warning`，从不 raise |
 | `EventSchema` | `openagents.interfaces.event_taxonomy` | 单个事件 schema 的 frozen dataclass |
 | `gen_event_doc.render_doc()` / `write_doc(target)` / `main(argv)` | `openagents.tools.gen_event_doc` | 从 `EVENT_SCHEMAS` 重新生成 `docs/event-taxonomy.md` 的 helper |
 
-## 15. Optional builtin index（Spec C）
+## 18. Optional builtin index（Spec C）
 
 These builtins ship under `openagents/plugins/builtin/` but require an
 optional extra to construct. Module import always succeeds; instantiation
@@ -562,10 +743,11 @@ Install with `uv sync --extra <name>` (or `uv sync --extra all`). Each
 module is also added to `[tool.coverage.report] omit` in `pyproject.toml`
 so the 92% coverage floor stays intact when the extra is not installed.
 
-## 16. 继续阅读
+## 19. 继续阅读
 
 - [开发者指南](developer-guide.md)
 - [Seam 与扩展点](seams-and-extension-points.md)
 - [配置参考](configuration.md)
 - [插件开发](plugin-development.md)
 - [示例说明](examples.md)
+- [流式 API 深度指南](stream-api.md)

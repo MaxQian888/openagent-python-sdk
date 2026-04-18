@@ -28,6 +28,7 @@ Adds models, enums, and exception classes required by later chunks. All additive
 ### Task 1: Add `OutputValidationError` and extend `BudgetExhausted` + `ModelRetryError`
 
 **Files:**
+
 - Modify: `openagents/errors/exceptions.py`
 - Modify: `tests/unit/test_errors.py`
 
@@ -205,6 +206,7 @@ EOF
 ### Task 2: Add `RunStreamChunkKind` enum and `RunStreamChunk` model
 
 **Files:**
+
 - Modify: `openagents/interfaces/runtime.py`
 - Create: `tests/unit/test_run_stream_chunk.py`
 
@@ -324,6 +326,7 @@ EOF
 ### Task 3: Make `RunResult` generic `RunResult[OutputT]`
 
 **Files:**
+
 - Modify: `openagents/interfaces/runtime.py`
 - Create: `tests/unit/test_run_result_generic.py`
 
@@ -437,6 +440,7 @@ EOF
 ### Task 4: Add new fields to `RunRequest`, `RunBudget`, `RunUsage`, `ToolExecutionSpec`
 
 **Files:**
+
 - Modify: `openagents/interfaces/runtime.py`
 - Modify: `openagents/interfaces/tool.py`
 - Create: `tests/unit/test_run_protocol_additions.py`
@@ -600,6 +604,7 @@ EOF
 ### Task 5: Add `LLMPricing`, `LLMCostBreakdown`, `compute_cost`, and `LLMClient.count_tokens` / pricing attrs
 
 **Files:**
+
 - Modify: `openagents/llm/base.py`
 - Modify: `openagents/config/schema.py` (add `LLMPricing` to `LLMOptions`)
 - Create: `tests/unit/test_llm_base_additions.py`
@@ -830,6 +835,7 @@ EOF
 ### Task 6: Export new symbols from `openagents` top-level
 
 **Files:**
+
 - Modify: `openagents/__init__.py`
 - Modify: `tests/unit/test_interfaces_and_exports.py`
 
@@ -926,6 +932,7 @@ Wires price tables, cached-token extraction, `RunUsage` aggregation, and `max_co
 ### Task 7: Anthropic provider — price table, cached-token extraction, `count_tokens`
 
 **Files:**
+
 - Modify: `openagents/llm/providers/anthropic.py`
 - Modify: `tests/unit/test_anthropic_client.py` (or create `tests/unit/test_anthropic_cached_tokens.py`)
 - Create: `tests/unit/test_anthropic_cached_tokens.py`
@@ -1057,6 +1064,7 @@ EOF
 ### Task 8: OpenAI-compatible provider — price table, cached-token extraction, `count_tokens`
 
 **Files:**
+
 - Modify: `openagents/llm/providers/openai_compatible.py`
 - Create: `tests/unit/test_openai_cached_tokens.py`
 
@@ -1190,6 +1198,7 @@ EOF
 ### Task 9: Mock provider — pricing stubs
 
 **Files:**
+
 - Modify: `openagents/llm/providers/mock.py`
 - Modify: `tests/unit/test_llm_registry.py` (add a check)
 
@@ -1246,6 +1255,7 @@ EOF
 ### Task 10: Wire per-call cost into `LLMResponse.usage` in each provider
 
 **Files:**
+
 - Modify: `openagents/llm/base.py` (add `cost_usd` to `LLMUsage` + rate merger helper)
 - Modify: `openagents/llm/providers/anthropic.py`
 - Modify: `openagents/llm/providers/openai_compatible.py`
@@ -1395,6 +1405,7 @@ EOF
 ### Task 11: Registry — pass `LLMOptions.pricing` overrides into provider instances
 
 **Files:**
+
 - Modify: `openagents/llm/registry.py`
 - Create: `tests/unit/test_pricing_config_override.py`
 
@@ -1475,6 +1486,7 @@ EOF
 ### Task 12: Pattern aggregates per-call cost into `RunUsage` with None-sticky semantics
 
 **Files:**
+
 - Modify: `openagents/interfaces/pattern.py`
 - Create: `tests/unit/test_run_usage_aggregation.py`
 
@@ -1642,6 +1654,7 @@ EOF
 ### Task 13: Runtime — enforce `max_cost_usd` at pre- and post-call checkpoints
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/runtime/default_runtime.py`
 - Create: `tests/unit/test_cost_budget_enforcement.py`
 
@@ -1733,6 +1746,7 @@ Coverage ≥ 90%.
 ### Task 14: Add `Pattern.finalize()` and `_format_validation_error` / `_inject_validation_correction` helpers
 
 **Files:**
+
 - Modify: `openagents/interfaces/pattern.py`
 - Create: `tests/unit/test_pattern_finalize.py`
 
@@ -1863,6 +1877,7 @@ EOF
 ### Task 15: Update `ReActPattern` to inject correction at the start of execute
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/pattern/react.py`
 - Modify: `tests/unit/test_builtin_patterns_additional.py` (or similar)
 
@@ -1940,6 +1955,7 @@ EOF
 ### Task 16: Update `PlanExecutePattern` with correction injection
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/pattern/plan_execute.py`
 
 - [ ] **Step 1: Append a targeted test in `tests/unit/test_pattern_validation_correction.py`**
@@ -1993,6 +2009,7 @@ EOF
 ### Task 17: Update `ReflexionPattern` with correction injection
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/pattern/reflexion.py`
 
 Follow the identical structure as Task 16 — add a `test_reflexion_injects_correction`, run, implement by calling `self._inject_validation_correction()` at top of `execute`, pass, commit with message `feat(pattern/reflexion): inject validation correction at execute entry`.
@@ -2002,6 +2019,7 @@ Follow the identical structure as Task 16 — add a `test_reflexion_injects_corr
 ### Task 18: Runtime — call `pattern.finalize()` and drive validation retry loop
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/runtime/default_runtime.py`
 - Create: `tests/unit/test_validation_retry_loop.py`
 
@@ -2113,6 +2131,7 @@ EOF
 ### Task 19: End-to-end structured output integration test
 
 **Files:**
+
 - Create: `tests/integration/test_structured_output_e2e.py`
 
 - [ ] **Step 1: Write the test**
@@ -2169,6 +2188,7 @@ uv run coverage report --fail-under=90
 ### Task 20: `pattern.call_tool` catches `ModelRetryError`, counts per-tool, escalates
 
 **Files:**
+
 - Modify: `openagents/interfaces/pattern.py`
 - Create: `tests/unit/test_tool_model_retry.py`
 
@@ -2333,6 +2353,7 @@ uv run coverage report --fail-under=90
 ### Task 21: Create `openagents/runtime/stream_projection.py`
 
 **Files:**
+
 - Create: `openagents/runtime/stream_projection.py`
 - Create: `tests/unit/test_stream_projection.py`
 
@@ -2426,6 +2447,7 @@ EOF
 ### Task 22: `Runtime.run_stream()` async method
 
 **Files:**
+
 - Modify: `openagents/runtime/runtime.py`
 - Create: `tests/unit/test_runtime_stream.py`
 
@@ -2577,6 +2599,7 @@ EOF
 ### Task 23: sync helpers `stream_agent*`
 
 **Files:**
+
 - Modify: `openagents/runtime/sync.py`
 - Modify: `tests/unit/test_runtime_sync_helpers.py`
 
@@ -2672,6 +2695,7 @@ EOF
 ### Task 24: Pattern — streaming branch in `call_llm` / `call_tool`
 
 **Files:**
+
 - Modify: `openagents/interfaces/pattern.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -2722,6 +2746,7 @@ EOF
 ### Task 25: Integration test — `run_stream` end-to-end and cancel
 
 **Files:**
+
 - Create: `tests/integration/test_run_stream_end_to_end.py`
 - Create: `tests/integration/test_run_stream_cancel.py`
 
@@ -2805,6 +2830,7 @@ uv run coverage report --fail-under=90
 ### Task 26: Rename `summarizing.py` → `truncating.py`; rename class
 
 **Files:**
+
 - Delete: `openagents/plugins/builtin/context/summarizing.py`
 - Create: `openagents/plugins/builtin/context/truncating.py`
 - Modify: `openagents/plugins/registry.py`
@@ -2822,6 +2848,7 @@ Edit the new file: change class name to `TruncatingContextAssembler`; update doc
 - [ ] **Step 2: Update registry imports**
 
 In `openagents/plugins/registry.py`:
+
 - Replace `from openagents.plugins.builtin.context.summarizing import SummarizingContextAssembler` with `from openagents.plugins.builtin.context.truncating import TruncatingContextAssembler`.
 - Replace `"context_assembler": {"summarizing": SummarizingContextAssembler}` with `"context_assembler": {"truncating": TruncatingContextAssembler}`.
 
@@ -2893,6 +2920,7 @@ EOF
 ### Task 27: Reject legacy `summarizing` config type with migration error
 
 **Files:**
+
 - Modify: `openagents/config/schema.py` (or `validator.py`)
 - Create: `tests/unit/test_config_summarizing_rename_error.py`
 
@@ -2960,6 +2988,7 @@ EOF
 ### Task 28: Create `TokenBudgetContextAssembler` base class
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/context/base.py`
 - Create: `tests/unit/test_token_budget_context_base.py`
 
@@ -3120,6 +3149,7 @@ EOF
 ### Task 29: Add `HeadTailContextAssembler`
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/context/head_tail.py`
 - Create: `tests/unit/test_head_tail_assembler.py`
 - Modify: `openagents/plugins/registry.py`
@@ -3238,6 +3268,7 @@ EOF
 ### Task 30: Add `SlidingWindowContextAssembler`
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/context/sliding_window.py`
 - Create: `tests/unit/test_sliding_window_assembler.py`
 - Modify: `openagents/plugins/registry.py`
@@ -3266,6 +3297,7 @@ Register key `"sliding_window"`. Commit with `feat(context): add SlidingWindowCo
 ### Task 31: Add `ImportanceWeightedContextAssembler`
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/context/importance_weighted.py`
 - Create: `tests/unit/test_importance_weighted_assembler.py`
 - Modify: `openagents/plugins/registry.py`
@@ -3316,6 +3348,7 @@ Register `"importance_weighted"`. Commit `feat(context): add ImportanceWeightedC
 ### Task 32: Provider `count_tokens` overrides — already added for OpenAI in Task 8; add coverage for Anthropic fallback + Mock
 
 **Files:**
+
 - Create: `tests/unit/test_llm_count_tokens.py`
 
 - [ ] **Step 1: Test all three providers**
@@ -3362,6 +3395,7 @@ EOF
 ### Task 33: Integration test — token-budget assembly end-to-end
 
 **Files:**
+
 - Create: `tests/integration/test_context_assembly_token_budget.py`
 
 - [ ] **Step 1: Write the test**
@@ -3398,6 +3432,7 @@ uv run coverage report --fail-under=90
 ### Task 34: Scaffold `openagents/cli/` with argparse dispatch
 
 **Files:**
+
 - Create: `openagents/cli/__init__.py`
 - Create: `openagents/cli/main.py`
 - Create: `openagents/__main__.py`
@@ -3515,6 +3550,7 @@ EOF
 ### Task 35: `openagents schema`
 
 **Files:**
+
 - Create: `openagents/cli/schema_cmd.py`
 - Create: `tests/unit/test_cli_schema.py`
 
@@ -3667,6 +3703,7 @@ EOF
 ### Task 36: `openagents validate`
 
 **Files:**
+
 - Create: `openagents/cli/validate_cmd.py`
 - Create: `tests/unit/test_cli_validate.py`
 
@@ -3679,6 +3716,7 @@ Commit: `feat(cli): add openagents validate subcommand`.
 ### Task 37: `openagents list-plugins`
 
 **Files:**
+
 - Create: `openagents/cli/list_plugins_cmd.py`
 - Create: `tests/unit/test_cli_list_plugins.py`
 
@@ -3691,6 +3729,7 @@ Commit: `feat(cli): add openagents list-plugins subcommand`.
 ### Task 38: Plugin `Config` schemas — batch 1 (infra seams)
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/runtime/default_runtime.py` (`class Config`)
 - Modify: `openagents/plugins/builtin/session/in_memory.py`
 - Modify: `openagents/plugins/builtin/events/async_event_bus.py`
@@ -3762,6 +3801,7 @@ EOF
 ### Task 39: Plugin `Config` schemas — batch 2 (pattern + memory)
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/pattern/react.py`, `plan_execute.py`, `reflexion.py`
 - Modify: `openagents/plugins/builtin/memory/buffer.py`, `window_buffer.py`, `chain.py`
 - Extend: `tests/unit/test_plugin_config_schemas.py` `TARGETS` list
@@ -3773,6 +3813,7 @@ Same procedure as Task 38. Commit: `feat(plugins): declare Config schemas for pa
 ### Task 40: Plugin `Config` schemas — batch 3 (executor / policy / context)
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/tool_executor/safe.py`
 - Modify: `openagents/plugins/builtin/execution_policy/filesystem.py`
 - Modify: `openagents/plugins/builtin/context/truncating.py` / `head_tail.py` / `sliding_window.py` / `importance_weighted.py` / `base.py`
@@ -3785,6 +3826,7 @@ Commit: `feat(plugins): declare Config schemas for executor/policy/context seams
 ### Task 41: Plugin `Config` schemas — batch 4 (followup / response_repair)
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/followup/basic.py`
 - Modify: `openagents/plugins/builtin/response_repair/basic.py`
 - Extend: `tests/unit/test_plugin_config_schemas.py`
@@ -3796,6 +3838,7 @@ Commit: `feat(plugins): declare Config schemas for followup / response_repair`.
 ### Task 42: Plugin `Config` schemas — batch 5 (high-security tools)
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/tool/http_ops.py` (HttpRequestTool — allow_domains, timeout_ms, max_body_bytes)
 - Modify: `openagents/plugins/builtin/tool/file_ops.py` (ReadFileTool / WriteFileTool / ListFilesTool / DeleteFileTool — root, allow_write)
 - Modify: `openagents/plugins/builtin/tool/system_ops.py` (ExecuteCommandTool / GetEnvTool / SetEnvTool — allow_commands, timeout_ms)
@@ -3808,6 +3851,7 @@ Commit: `feat(plugins): declare Config schemas for high-security tools`.
 ### Task 43: Integration smoke — `python -m openagents <sub>` across the three commands
 
 **Files:**
+
 - Create: `tests/integration/test_cli_smoke.py`
 
 ```python
@@ -3866,6 +3910,7 @@ uv run coverage report --fail-under=90
 ### Task 44: pyproject — add `tokenizers` and `yaml` optional extras; bump version
 
 **Files:**
+
 - Modify: `pyproject.toml`
 
 - [ ] **Step 1: Edit `pyproject.toml`**
@@ -3915,6 +3960,7 @@ EOF
 ### Task 45: CHANGELOG entry
 
 **Files:**
+
 - Modify (or create): `CHANGELOG.md`
 
 - [ ] **Step 1: Add `0.3.0` section**
@@ -3962,9 +4008,11 @@ EOF
 ### Task 46: Migration guide
 
 **Files:**
+
 - Create: `docs/migration-0.2-to-0.3.md`
 
 Cover every case from spec §7.3:
+
 1. "Only run_detailed, no custom pattern" → 0 changes.
 2. "Custom pattern, no output_type" → 0 changes.
 3. "Config has `summarizing` context_assembler" → rename to `truncating` or pick a new strategy.
@@ -3979,6 +4027,7 @@ Commit: `docs: migration guide from 0.2.0 to 0.3.0`.
 ### Task 47: Update `README.md`, `README_EN.md`, `README_CN.md`
 
 **Files:**
+
 - Modify: `README.md`, `README_EN.md`, `README_CN.md`
 
 Extend the "Key public contracts" / "公共契约" section to mention `RunResult[OutputT]`, `RunStreamChunk`, `RunUsage.cost_usd`, `output_type`. Add a brief "What's new in 0.3.0" bullet list pointing at the migration doc.
@@ -3990,9 +4039,11 @@ Commit: `docs(readme): highlight 0.3.0 public contracts and streaming/typed outp
 ### Task 48: Update `docs/developer-guide.md`, `docs/api-reference.md`, `docs/configuration.md`, `docs/plugin-development.md`
 
 **Files:**
+
 - Modify: four listed `docs/*.md` files
 
 Insert the required sections as specified in spec §7.3:
+
 - `developer-guide.md`: update the "一次 run 的主流程" step list to include `pattern.finalize → 校验 → 若失败且预算未尽则重入 execute` and "每次 llm call 后汇总 cost、检查预算".
 - `api-reference.md`: new API docs for `run_stream`, `RunStreamChunk`, `RunRequest.output_type`, `RunUsage.cost_usd`, CLI commands.
 - `configuration.md`: document new fields (`max_validation_retries`, `max_cost_usd`, `llm.pricing`, new context_assembler types).
@@ -4005,6 +4056,7 @@ Commit: `docs: document 0.3.0 public APIs, configuration, and plugin conventions
 ### Task 49: Update `examples/quickstart/run_demo.py`
 
 **Files:**
+
 - Modify: `examples/quickstart/run_demo.py`
 - Modify: `examples/quickstart/agent.json` (if needed)
 
@@ -4021,6 +4073,7 @@ Commit: `docs(examples/quickstart): demonstrate structured output via output_typ
 ### Task 50: Create `examples/production_coding_agent/run_stream_demo.py`
 
 **Files:**
+
 - Create: `examples/production_coding_agent/run_stream_demo.py`
 
 Copy the structure of `run_demo.py` but call `stream_agent_with_config(...)` and print each chunk kind/payload.

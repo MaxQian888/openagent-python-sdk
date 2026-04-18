@@ -510,6 +510,7 @@ For OTel tests, install `opentelemetry-sdk` as a **dev-only** dependency (not a 
 ### 6.3 CLI smoke
 
 Extend `tests/unit/test_cli_schema.py` (or closest equivalent):
+
 - `openagents list-plugins` output includes `session.sqlite` and `events.otel_bridge`
 - `openagents schema` output includes Config schemas for both
 

@@ -579,6 +579,7 @@ FIFO 丢前面直到满足预算。不保留开头；适合对话类（其中 sy
 
 **`ImportanceWeightedContextAssembler`**  
 按预算保留，优先级：
+
 1. 第一条 `role=system`（基线指令）
 2. 最近一次 `role=user`
 3. 最近一次 `role=tool`（tool 结果最相关）

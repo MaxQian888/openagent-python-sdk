@@ -124,7 +124,7 @@ team、mailbox、planner、scheduler、approval、UI workflow 都应该放在这
 
 ## 直接看代码
 
-- package exports: [openagents/__init__.py](../openagents/__init__.py)
+- package exports: [openagents/**init**.py](../openagents/__init__.py)
 - runtime facade: [openagents/runtime/runtime.py](../openagents/runtime/runtime.py)
 - builtin runtime: [openagents/plugins/builtin/runtime/default_runtime.py](../openagents/plugins/builtin/runtime/default_runtime.py)
 - config schema: [openagents/config/schema.py](../openagents/config/schema.py)

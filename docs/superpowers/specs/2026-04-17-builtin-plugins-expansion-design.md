@@ -139,7 +139,7 @@ Behavior:
 - `resolve(context)`:
   - Walk rules in order. First `re.search(rule.pattern, context.input_text, re.IGNORECASE)` hit wins.
   - If `requires_history` and no `memory_view.history`: return `FollowupResolution(status="abstain", reason="no history")`.
-  - Format `template` with variables pulled from `history[-1]`: `tool_ids` joined by `, `; `last_input`; `last_output`.
+  - Format `template` with variables pulled from `history[-1]`: `tool_ids` joined by `,`; `last_input`; `last_output`.
   - Missing keys in format → substituted via `collections.defaultdict(str, ...)` wrapper; never raises.
   - Return `FollowupResolution(status="resolved", output=rendered, metadata={"rule":rule.name})`.
 - No rule matches → return `None` (SDK falls back to model).

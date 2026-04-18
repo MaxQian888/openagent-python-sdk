@@ -1,0 +1,106 @@
+site_name: OpenAgents SDK
+site_description: Config-as-code single-agent runtime kernel for Python
+repo_url: https://github.com/openagentsinc/openagent-python-sdk
+repo_name: openagent-python-sdk
+docs_dir: docs
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切换到深色模式 / Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切换到浅色模式 / Switch to light mode
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: zh
+          name: 中文
+          default: true
+          build: true
+        - locale: en
+          name: English
+          build: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/openagentsinc/openagent-python-sdk
+
+nav:
+  - 首页: index.md
+  - 入门:
+      - 开发者指南: developer-guide.md
+      - 仓库结构: repository-layout.md
+      - 示例: examples.md
+  - 架构:
+      - Seam 与扩展点: seams-and-extension-points.md
+  - 配置:
+      - 配置参考: configuration.md
+      - 事件分类: event-taxonomy.md
+  - 插件开发:
+      - 插件开发指南: plugin-development.md
+  - API 参考:
+      - API 参考: api-reference.md
+      - 内置工具参考: builtin-tools.md
+      - 流式 API: stream-api.md
+      - CLI 参考: cli-reference.md
+      - 可观测性与日志: observability.md
+  - 迁移:
+      - 0.2 → 0.3: migration-0.2-to-0.3.md
+  - Skills:
+      - OpenAgent Agent Builder: openagent-agent-builder.md

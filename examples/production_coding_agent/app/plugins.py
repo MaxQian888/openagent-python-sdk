@@ -86,7 +86,9 @@ class CodingMemory(MemoryPlugin):
         return data if isinstance(data, list) else []
 
     def _save_records(self, session_id: str, records: list[dict[str, Any]]) -> None:
-        self._storage_path(session_id).write_text(
+        path = self._storage_path(session_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
             json.dumps(records[-self._max_items :], ensure_ascii=False, indent=2),
             encoding="utf-8",
         )

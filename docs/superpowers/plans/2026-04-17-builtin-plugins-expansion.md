@@ -11,6 +11,7 @@
 **Spec:** [docs/superpowers/specs/2026-04-17-builtin-plugins-expansion-design.md](../specs/2026-04-17-builtin-plugins-expansion-design.md)
 
 **Global conventions for every task below:**
+
 - Run tests with `uv run pytest -q <path>`; never invoke `pytest` directly.
 - Every new file must have `from __future__ import annotations` at the top.
 - Every new builtin must declare a `class Config(BaseModel)` and be registered in `openagents/plugins/registry.py` before any test can resolve it by `type` key.
@@ -23,6 +24,7 @@
 ## Task 1: `RetryToolExecutor`
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/tool_executor/retry.py`
 - Modify: `openagents/plugins/builtin/tool_executor/__init__.py`
 - Modify: `openagents/plugins/registry.py`
@@ -211,6 +213,7 @@ def test_registered_as_builtin():
 ```bash
 uv run pytest -q tests/unit/test_retry_tool_executor.py
 ```
+
 Expected: `ModuleNotFoundError: No module named 'openagents.plugins.builtin.tool_executor.retry'`.
 
 - [ ] **Step 3: Implement `RetryToolExecutor`**
@@ -341,6 +344,7 @@ Modify `openagents/plugins/registry.py`: add the import line `from openagents.pl
 ```bash
 uv run pytest -q tests/unit/test_retry_tool_executor.py
 ```
+
 Expected: all tests PASS.
 
 - [ ] **Step 6: Commit**
@@ -355,6 +359,7 @@ git commit -m "feat(tool_executor): add retry builtin with exponential backoff"
 ## Task 2: `CompositeExecutionPolicy`
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/execution_policy/composite.py`
 - Modify: `openagents/plugins/builtin/execution_policy/__init__.py`
 - Modify: `openagents/plugins/registry.py`
@@ -471,6 +476,7 @@ def test_registered_as_builtin():
 ```bash
 uv run pytest -q tests/unit/test_composite_execution_policy.py
 ```
+
 Expected: ModuleNotFoundError for the composite module.
 
 - [ ] **Step 3: Implement `CompositeExecutionPolicy`**
@@ -588,6 +594,7 @@ Modify `openagents/plugins/registry.py`: add the import and extend:
 ```bash
 uv run pytest -q tests/unit/test_composite_execution_policy.py
 ```
+
 Expected: all PASS.
 
 - [ ] **Step 6: Commit**
@@ -602,6 +609,7 @@ git commit -m "feat(execution_policy): add composite AND/OR combinator"
 ## Task 3: `NetworkAllowlistExecutionPolicy`
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/execution_policy/network.py`
 - Modify: `openagents/plugins/builtin/execution_policy/__init__.py`
 - Modify: `openagents/plugins/registry.py`
@@ -690,6 +698,7 @@ def test_registered_as_builtin():
 ```bash
 uv run pytest -q tests/unit/test_network_allowlist_policy.py
 ```
+
 Expected: ModuleNotFoundError.
 
 - [ ] **Step 3: Implement `NetworkAllowlistExecutionPolicy`**
@@ -805,6 +814,7 @@ Modify `openagents/plugins/registry.py`: add the import line and extend:
 ```bash
 uv run pytest -q tests/unit/test_network_allowlist_policy.py
 ```
+
 Expected: all PASS.
 
 - [ ] **Step 6: Commit**
@@ -819,6 +829,7 @@ git commit -m "feat(execution_policy): add network_allowlist builtin"
 ## Task 4: `RuleBasedFollowupResolver`
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/followup/rule_based.py`
 - Modify: `openagents/plugins/builtin/followup/__init__.py` (create if missing — currently not present; module loaded via explicit imports elsewhere)
 - Modify: `openagents/plugins/registry.py`
@@ -911,6 +922,7 @@ def test_registered_as_builtin():
 ```bash
 uv run pytest -q tests/unit/test_rule_based_followup.py
 ```
+
 Expected: ModuleNotFoundError.
 
 - [ ] **Step 3: Implement `RuleBasedFollowupResolver`**
@@ -1027,6 +1039,7 @@ Modify `openagents/plugins/registry.py`: add the import and extend:
 ```bash
 uv run pytest -q tests/unit/test_rule_based_followup.py
 ```
+
 Expected: all PASS.
 
 - [ ] **Step 6: Commit**
@@ -1041,6 +1054,7 @@ git commit -m "feat(followup): add rule_based resolver"
 ## Task 5: `JsonlFileSessionManager`
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/session/jsonl_file.py`
 - Modify: `openagents/plugins/builtin/session/__init__.py`
 - Modify: `openagents/plugins/registry.py`
@@ -1146,6 +1160,7 @@ def test_registered_as_builtin():
 ```bash
 uv run pytest -q tests/unit/test_jsonl_file_session.py
 ```
+
 Expected: ModuleNotFoundError.
 
 - [ ] **Step 3: Implement `JsonlFileSessionManager`**
@@ -1361,6 +1376,7 @@ Modify `openagents/plugins/registry.py`: add the import line and extend:
 ```bash
 uv run pytest -q tests/unit/test_jsonl_file_session.py
 ```
+
 Expected: all PASS.
 
 - [ ] **Step 6: Commit**
@@ -1375,6 +1391,7 @@ git commit -m "feat(session): add jsonl_file persisted session manager"
 ## Task 6: `FileLoggingEventBus`
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/events/file_logging.py`
 - Modify: `openagents/plugins/builtin/events/__init__.py`
 - Modify: `openagents/plugins/registry.py`
@@ -1470,6 +1487,7 @@ def test_registered_as_builtin():
 ```bash
 uv run pytest -q tests/unit/test_file_logging_event_bus.py
 ```
+
 Expected: ModuleNotFoundError.
 
 - [ ] **Step 3: Implement `FileLoggingEventBus`**
@@ -1578,6 +1596,7 @@ Modify `openagents/plugins/registry.py`: add the import and extend:
 ```bash
 uv run pytest -q tests/unit/test_file_logging_event_bus.py
 ```
+
 Expected: all PASS.
 
 - [ ] **Step 6: Commit**
@@ -1592,6 +1611,7 @@ git commit -m "feat(events): add file_logging event bus wrapper"
 ## Task 7: `StrictJsonResponseRepairPolicy`
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/response_repair/strict_json.py`
 - Modify: `openagents/plugins/builtin/response_repair/__init__.py` (create if missing)
 - Modify: `openagents/plugins/registry.py`
@@ -1674,6 +1694,7 @@ def test_registered_as_builtin():
 ```bash
 uv run pytest -q tests/unit/test_strict_json_response_repair.py
 ```
+
 Expected: ModuleNotFoundError.
 
 - [ ] **Step 3: Implement `StrictJsonResponseRepairPolicy`**
@@ -1835,6 +1856,7 @@ Modify `openagents/plugins/registry.py`: add the import and extend:
 ```bash
 uv run pytest -q tests/unit/test_strict_json_response_repair.py
 ```
+
 Expected: all PASS.
 
 - [ ] **Step 6: Commit**
@@ -1849,6 +1871,7 @@ git commit -m "feat(response_repair): add strict_json salvager policy"
 ## Task 8: CLI smoke — list-plugins & schema pick up new builtins
 
 **Files:**
+
 - Modify: `tests/unit/test_cli.py` OR add `tests/unit/test_cli_new_builtins.py` (new file is simpler)
 
 - [ ] **Step 1: Write the failing test**
@@ -1900,6 +1923,7 @@ def test_schema_exposes_configs_for_new_builtins():
 uv run python -m openagents.cli list-plugins --help
 uv run python -m openagents.cli schema --help
 ```
+
 Expected: confirm `--kind` / `--name` flags exist. If the flag names differ (e.g. positional args), adjust the test to match before proceeding. Look at `openagents/cli/list_plugins_cmd.py` and `openagents/cli/schema_cmd.py` (or equivalent) to confirm.
 
 - [ ] **Step 3: Run test**
@@ -1907,6 +1931,7 @@ Expected: confirm `--kind` / `--name` flags exist. If the flag names differ (e.g
 ```bash
 uv run pytest -q tests/unit/test_cli_new_builtins.py
 ```
+
 Expected: PASS (since Tasks 1–7 already registered the builtins). If FAIL, check that each `registry.py` import line landed and the builtin class exposes `Config` for `schema` command.
 
 - [ ] **Step 4: Commit**
@@ -1921,6 +1946,7 @@ git commit -m "test(cli): smoke-check new builtins in list-plugins and schema"
 ## Task 9: Research-Analyst example — stub server + fixtures
 
 **Files:**
+
 - Create: `examples/research_analyst/__init__.py` (empty)
 - Create: `examples/research_analyst/README.md`
 - Create: `examples/research_analyst/app/__init__.py` (empty)
@@ -1936,6 +1962,7 @@ git commit -m "test(cli): smoke-check new builtins in list-plugins and schema"
 ```bash
 uv pip show aiohttp | head -1
 ```
+
 If output is empty, run `uv add --dev aiohttp`.
 
 - [ ] **Step 2: Write the failing test**
@@ -1999,6 +2026,7 @@ async def test_counter_is_per_instance():
 ```bash
 uv run pytest -q tests/unit/test_research_analyst_stub_server.py
 ```
+
 Expected: ModuleNotFoundError for `examples.research_analyst.app.stub_server`.
 
 - [ ] **Step 4: Implement stub server + fixtures**
@@ -2153,6 +2181,7 @@ uv run python examples/research_analyst/run_demo.py
 ```
 
 No external network is required; an aiohttp stub server on 127.0.0.1 serves all web content.
+
 ```
 
 - [ ] **Step 5: Run tests**
@@ -2160,6 +2189,7 @@ No external network is required; an aiohttp stub server on 127.0.0.1 serves all 
 ```bash
 uv run pytest -q tests/unit/test_research_analyst_stub_server.py
 ```
+
 Expected: all PASS.
 
 - [ ] **Step 6: Commit**
@@ -2174,6 +2204,7 @@ git commit -m "feat(example/research_analyst): add stub server, fixtures, and fo
 ## Task 10: Research-Analyst example — `FollowupFirstReActPattern`
 
 **Files:**
+
 - Create: `examples/research_analyst/app/followup_pattern.py`
 - Test: `tests/unit/test_research_analyst_followup_pattern.py`
 
@@ -2257,6 +2288,7 @@ async def test_resolver_abstain_delegates_to_inner():
 ```bash
 uv run pytest -q tests/unit/test_research_analyst_followup_pattern.py
 ```
+
 Expected: ModuleNotFoundError.
 
 - [ ] **Step 3: Implement `FollowupFirstReActPattern`**
@@ -2319,6 +2351,7 @@ class FollowupFirstReActPattern(PatternPlugin):
 ```bash
 uv run pytest -q tests/unit/test_research_analyst_followup_pattern.py
 ```
+
 Expected: all PASS.
 
 - [ ] **Step 5: Commit**
@@ -2333,6 +2366,7 @@ git commit -m "feat(example/research_analyst): add FollowupFirstReActPattern wra
 ## Task 11: Research-Analyst example — agent.json + run_demo.py
 
 **Files:**
+
 - Create: `examples/research_analyst/agent.json`
 - Create: `examples/research_analyst/run_demo.py`
 - Modify: `.gitignore` (ignore `examples/research_analyst/sessions/`)
@@ -2493,6 +2527,7 @@ examples/research_analyst/sessions/
 ```bash
 uv run python examples/research_analyst/run_demo.py
 ```
+
 Expected: the command finishes without exception; `examples/research_analyst/sessions/demo-session.jsonl` and `examples/research_analyst/sessions/events.ndjson` exist. The mock provider will likely not synthesize perfect tool_use chains — that is OK; the integration test in Task 12 injects a deterministic LLM client. The point of this smoke is to confirm `agent.json` parses, all plugins load, and the stub server + session files write.
 
 If the demo errors out with a loader error, fix the referenced `type`/`impl` until the error names the plugin in question, then re-run.
@@ -2509,6 +2544,7 @@ git commit -m "feat(example/research_analyst): add agent.json and run_demo.py"
 ## Task 12: Research-Analyst integration test
 
 **Files:**
+
 - Create: `tests/integration/test_research_analyst_example.py`
 
 - [ ] **Step 1: Write the integration test**
@@ -2688,6 +2724,7 @@ async def test_research_analyst_strict_json_repair(monkeypatch):
 ```bash
 uv run pytest -q tests/integration/test_research_analyst_example.py
 ```
+
 Expected: all three cases PASS. If any assertion fails, read the `events.ndjson` and session file contents to diagnose before tweaking either the example config or the test expectations.
 
 - [ ] **Step 3: Run full suite + coverage**
@@ -2696,6 +2733,7 @@ Expected: all three cases PASS. If any assertion fails, read the `events.ndjson`
 uv run pytest -q
 uv run coverage run -m pytest && uv run coverage report
 ```
+
 Expected: full suite green; `coverage report` ≥ 90% overall. Any new-file coverage below 90% must get additional unit tests added in the originating task before this step can be considered done.
 
 - [ ] **Step 4: Commit**
@@ -2710,6 +2748,7 @@ git commit -m "test(integration): research_analyst example end-to-end coverage"
 ## Task 13: Docs updates
 
 **Files:**
+
 - Modify: `examples/README.md`
 - Modify: `docs/examples.md`
 - Modify: `docs/developer-guide.md`
@@ -2741,6 +2780,7 @@ Verify:
 ```bash
 uv run pytest -q tests/integration/test_research_analyst_example.py
 ```
+
 ```
 
 - [ ] **Step 2: `docs/examples.md` — add walkthrough section**
@@ -2773,6 +2813,7 @@ Locate the existing section that enumerates builtin plugin `type` keys (search f
 ```bash
 uv run pytest -q
 ```
+
 Expected: green.
 
 - [ ] **Step 5: Commit**
@@ -2787,6 +2828,7 @@ git commit -m "docs: document new builtins and research_analyst example"
 ## Self-review
 
 **1. Spec coverage check:**
+
 - Spec §4.1 RetryToolExecutor → Task 1 ✓
 - Spec §4.2 CompositeExecutionPolicy → Task 2 ✓
 - Spec §4.3 NetworkAllowlistExecutionPolicy → Task 3 ✓

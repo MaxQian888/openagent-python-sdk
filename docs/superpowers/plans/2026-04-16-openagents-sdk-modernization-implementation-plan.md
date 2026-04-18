@@ -21,6 +21,7 @@
 ### Task 1: Add the new dependency and formalize the exception surface
 
 **Files:**
+
 - Modify: `pyproject.toml`
 - Modify: `openagents/errors/exceptions.py`
 - Modify: `openagents/interfaces/runtime.py`
@@ -92,6 +93,7 @@ git commit -m "feat(runtime): add typed sdk error hierarchy"
 ### Task 2: Replace config dataclasses and manual parsing with Pydantic models
 
 **Files:**
+
 - Modify: `openagents/config/schema.py`
 - Modify: `openagents/config/loader.py`
 - Modify: `openagents/config/__init__.py`
@@ -165,6 +167,7 @@ git commit -m "feat(config): migrate schema parsing to pydantic"
 ### Task 3: Introduce `RunContext[DepsT]` and migrate runtime/session contracts to Pydantic models
 
 **Files:**
+
 - Create: `openagents/interfaces/run_context.py`
 - Modify: `openagents/interfaces/runtime.py`
 - Modify: `openagents/interfaces/pattern.py`
@@ -243,6 +246,7 @@ git commit -m "feat(runtime): add typed run context contracts"
 ### Task 4: Thread `deps` through runtime entrypoints and default runtime orchestration
 
 **Files:**
+
 - Modify: `openagents/runtime/runtime.py`
 - Modify: `openagents/runtime/sync.py`
 - Modify: `openagents/plugins/builtin/runtime/default_runtime.py`
@@ -319,6 +323,7 @@ git commit -m "feat(runtime): thread deps through run context"
 ### Task 5: Make plugin construction explicit and surface registry conflicts
 
 **Files:**
+
 - Modify: `openagents/plugins/loader.py`
 - Modify: `openagents/plugins/registry.py`
 - Modify: `openagents/decorators.py`
@@ -398,6 +403,7 @@ git commit -m "feat(plugins): enforce explicit loader construction"
 ### Task 6: Add visible logging, event isolation, and budget enforcement
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/events/async_event_bus.py`
 - Modify: `openagents/plugins/builtin/runtime/default_runtime.py`
 - Modify: `openagents/interfaces/events.py`
@@ -471,6 +477,7 @@ git commit -m "feat(runtime): log suppressed failures and enforce budgets"
 ### Task 7: Update docs, examples, public exports, and release metadata for `0.2.0`
 
 **Files:**
+
 - Modify: `pyproject.toml`
 - Modify: `README.md`
 - Modify: `README_EN.md`
@@ -549,4 +556,3 @@ git commit -m "feat: ship openagents sdk modernization v0.2.0"
 - [ ] budget enforcement is visible and tested
 - [ ] docs/examples/public exports match the new API surface
 - [ ] `uv run pytest -q` passes
-

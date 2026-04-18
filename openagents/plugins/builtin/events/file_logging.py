@@ -115,6 +115,7 @@ class FileLoggingEventBus(EventBusPlugin):
                     ensure_ascii=False,
                     default=str,
                 )
+                self._log_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(self._log_path, "a", encoding="utf-8") as fh:
                     fh.write(line + "\n")
             except OSError as exc:

@@ -85,6 +85,7 @@ class JsonlFileSessionManager(SessionManagerPlugin):
 
     def _append(self, sid: str, event: dict[str, Any]) -> None:
         path = self._path(sid)
+        path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(event, ensure_ascii=False, default=str)
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")

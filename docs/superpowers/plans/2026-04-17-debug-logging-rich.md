@@ -52,6 +52,7 @@ Files this plan modifies:
 ## Task 1: Add `[rich]` extra to pyproject.toml
 
 **Files:**
+
 - Modify: `pyproject.toml`
 
 - [ ] **Step 1: Edit pyproject.toml**
@@ -113,6 +114,7 @@ git commit -m "chore(pyproject): add [rich] extra for optional pretty logging"
 ## Task 2: `openagents/observability/errors.py` — RichNotInstalledError
 
 **Files:**
+
 - Create: `openagents/observability/errors.py`
 
 - [ ] **Step 1: Create the file**
@@ -150,6 +152,7 @@ git commit -m "feat(observability): scaffold errors.RichNotInstalledError"
 ## Task 3: `openagents/observability/redact.py` — pure redactor
 
 **Files:**
+
 - Create: `openagents/observability/redact.py`
 - Test: `tests/unit/observability/__init__.py`
 - Test: `tests/unit/observability/test_redact.py`
@@ -317,6 +320,7 @@ git commit -m "feat(observability): pure redactor with key-mask, truncation, cyc
 ## Task 4: `openagents/observability/_rich.py` — rich console & handler factory
 
 **Files:**
+
 - Create: `openagents/observability/_rich.py`
 
 This module is tested indirectly by `test_configure.py` and `test_rich_console_bus.py` later. It has no standalone test of its own because the rich-rendering output is not something we unit-test line-by-line (that would be brittle).
@@ -424,6 +428,7 @@ git commit -m "feat(observability): rich Console/Handler factories behind import
 ## Task 5: `openagents/observability/filters.py` — logging filters
 
 **Files:**
+
 - Create: `openagents/observability/filters.py`
 - Test: `tests/unit/observability/test_filters.py`
 
@@ -638,6 +643,7 @@ git commit -m "feat(observability): prefix/level-override/redact logging filters
 ## Task 6: `openagents/observability/config.py` — LoggingConfig + env parser
 
 **Files:**
+
 - Create: `openagents/observability/config.py`
 - Test: `tests/unit/observability/test_logging_config.py`
 
@@ -899,6 +905,7 @@ git commit -m "feat(observability): LoggingConfig pydantic model + env var parse
 ## Task 7: `openagents/observability/logging.py` — configure / reset
 
 **Files:**
+
 - Create: `openagents/observability/logging.py`
 - Test: `tests/unit/observability/test_configure.py`
 
@@ -1176,6 +1183,7 @@ git commit -m "feat(observability): configure()/reset_logging() with library-eti
 ## Task 8: Extend `FileLoggingEventBus` with redact/glob/exclude_events
 
 **Files:**
+
 - Modify: `openagents/plugins/builtin/events/file_logging.py`
 - Test: `tests/unit/observability/test_file_logging_extended.py`
 
@@ -1431,6 +1439,7 @@ git commit -m "feat(events/file_logging): add redact_keys, max_value_length, exc
 ## Task 9: New `RichConsoleEventBus` plugin
 
 **Files:**
+
 - Create: `openagents/plugins/builtin/events/rich_console.py`
 - Modify: `openagents/plugins/builtin/events/__init__.py`
 - Test: `tests/unit/observability/test_rich_console_bus.py`
@@ -1693,6 +1702,7 @@ git commit -m "feat(events): add RichConsoleEventBus wrapper with glob filters a
 ## Task 10: Register `events.rich_console` in plugin registry
 
 **Files:**
+
 - Modify: `openagents/plugins/registry.py`
 
 - [ ] **Step 1: Edit registry.py**
@@ -1750,6 +1760,7 @@ git commit -m "feat(registry): register events.rich_console"
 ## Task 11: Add `logging` section to `AppConfig` schema
 
 **Files:**
+
 - Modify: `openagents/config/schema.py`
 
 - [ ] **Step 1: Edit `schema.py`**
@@ -1852,6 +1863,7 @@ git commit -m "feat(config): add optional AppConfig.logging field"
 ## Task 12: Auto-configure hook in `Runtime.__init__`
 
 **Files:**
+
 - Modify: `openagents/runtime/runtime.py`
 - Test: `tests/integration/test_runtime_auto_configure.py`
 
@@ -2002,6 +2014,7 @@ git commit -m "feat(runtime): opt-in logging auto-configure hook in Runtime.__in
 ## Task 13: Env-override integration test
 
 **Files:**
+
 - Test: `tests/integration/test_env_override.py`
 
 - [ ] **Step 1: Write the integration test**
@@ -2091,6 +2104,7 @@ git commit -m "test(observability): integration coverage for env-var override se
 ## Task 14: Update example `quickstart/agent.json`
 
 **Files:**
+
 - Modify: `examples/quickstart/agent.json`
 
 - [ ] **Step 1: Read current file**
@@ -2127,6 +2141,7 @@ git commit -m "docs(examples): enable pretty logging in quickstart agent.json"
 ## Task 15: Update docs
 
 **Files:**
+
 - Modify: `docs/developer-guide.md`
 - Modify: `docs/configuration.md`
 - Modify: `docs/seams-and-extension-points.md`
@@ -2201,6 +2216,7 @@ configure(LoggingConfig(level="DEBUG", pretty=True))
 ```
 
 三者都是 `EventBusPlugin` 包装器，可以通过 `inner` 字段叠加（例如先 `rich_console` 再 `file_logging` 再 `async`）。
+
 ```
 
 - [ ] **Step 2: `docs/configuration.md` — document `logging` section**

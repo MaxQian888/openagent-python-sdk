@@ -151,7 +151,47 @@ WAL 模式让多 reader 可并发读，跨进程的查询直接用 `sqlite3` CLI
 
 - `async`
 - `file_logging`
+- `rich_console`（需要 `[rich]` extra：`uv sync --extra rich`）
 - `otel_bridge`（可选 extra：`uv sync --extra otel`）
+
+#### `rich_console`
+
+在终端以彩色格式渲染每条事件，同时把事件透传给 inner bus（subscriber 不受影响）。
+
+```json
+{
+  "events": {
+    "type": "rich_console",
+    "config": {
+      "inner": {"type": "async"},
+      "include_events": ["tool.*", "llm.*"],
+      "exclude_events": [],
+      "show_payload": true,
+      "stream": "stderr",
+      "redact_keys": ["api_key", "authorization", "token", "secret", "password"],
+      "max_value_length": 500,
+      "max_history": 10000
+    }
+  }
+}
+```
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `inner` | object | `{"type": "async"}` | inner bus selector，事件总是先转发到 inner |
+| `include_events` | list[str] \| null | `null` | fnmatch 白名单，`null` = 所有事件 |
+| `exclude_events` | list[str] | `[]` | fnmatch 黑名单，deny 优先于 allow |
+| `show_payload` | bool | `true` | 是否渲染 payload 内容 |
+| `stream` | `"stdout"` \| `"stderr"` | `"stderr"` | 输出流 |
+| `redact_keys` | list[str] | （见上方）| 脱敏字段名（大小写不敏感） |
+| `max_value_length` | int | `500` | payload 值截断长度 |
+| `max_history` | int | `10000` | 转发给 inner bus 的 history 大小 |
+
+!!! note
+    渲染失败只 log warning，不会阻断事件流。未安装 `rich` 包时构造会抛
+    `PluginLoadError` 并附带安装提示。
+
+#### `otel_bridge`
 
 `otel_bridge` 包另一个 inner bus，对每个 emit 创建一个一次性的 OTel
 span，名为 `openagents.<event_name>`，payload 各 key 平铺成 `oa.<key>`
@@ -228,7 +268,6 @@ OTel API 会 no-op，bridge 等于零成本。
   "tools": [],
   "runtime": {
     "max_steps": 16,
-    "max_tool_calls": 32,
     "step_timeout_ms": 30000,
     "session_queue_size": 1000,
     "event_queue_size": 2000
@@ -248,6 +287,11 @@ OTel API 会 no-op，bridge 等于零成本。
 | `tools` | array | 否 | tool 列表 |
 | `runtime` | object | 否 | agent 级运行限制，不是 runtime plugin selector |
 
+!!! note
+    `output_type`（结构化输出的 Pydantic model）和 `budget.max_validation_retries`
+    是在 **`RunRequest`** 调用时传入的，不在 JSON 配置文件里声明。
+    详见[结构化输出配置（RunRequest 字段）](#runrequest)一节。
+
 ## 5. agent.runtime
 
 `agent.runtime` 是这个 agent 的运行限制配置。
@@ -266,7 +310,6 @@ OTel API 会 no-op，bridge 等于零成本。
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `max_steps` | int | `16` | 逻辑 step 上限 |
-| `max_tool_calls` | int | `null` | tool 调用上限 |
 | `step_timeout_ms` | int | `30000` | 单 step timeout |
 | `session_queue_size` | int | `1000` | 目前主要是 schema 级字段 |
 | `event_queue_size` | int | `2000` | 目前主要是 schema 级字段 |
@@ -274,8 +317,9 @@ OTel API 会 no-op，bridge 等于零成本。
 注意：
 
 - 这些字段都必须是正整数
-- builtin `DefaultRuntime` 当前直接消费 `max_steps`、`max_tool_calls`、以及 `step_timeout_ms` / `max_duration_ms` 这类 budget
+- builtin `DefaultRuntime` 当前直接消费 `max_steps` 和 `step_timeout_ms`
 - `session_queue_size`、`event_queue_size` 当前会被校验，但 builtin runtime 不直接消费
+- `max_tool_calls` 和 `max_duration_ms` 通过 `RunRequest.budget` 传入，不在 JSON 配置文件里
 
 ## 6. Memory
 
@@ -373,6 +417,34 @@ builtin pattern：
 - `openai_compatible` 必须提供 `api_base`
 - `timeout_ms` 必须是正整数
 - `max_tokens` 如果提供，必须是正整数
+- `temperature` 如果提供，必须在 `0.0` 到 `2.0` 之间
+
+### `pricing`（可选）
+
+可以通过 `pricing` 字段覆盖 provider 默认定价，用于统计 cost 信息。
+单位：每百万 token 的美元价格。
+
+```json
+{
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-3-5-sonnet-20241022",
+    "pricing": {
+      "input": 3.0,
+      "output": 15.0,
+      "cached_read": 0.30,
+      "cached_write": 3.75
+    }
+  }
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `input` | float \| null | 输入 token 单价（$/M） |
+| `output` | float \| null | 输出 token 单价（$/M） |
+| `cached_read` | float \| null | cache read 单价（$/M，prompt caching） |
+| `cached_write` | float \| null | cache write 单价（$/M，prompt caching） |
 
 ## 9. Tools
 
@@ -434,20 +506,47 @@ builtin tool id：
 builtin：
 
 - `safe` — 基础 timeout + 错误规范化，不做权限判断
+
+  ```json
+  {
+    "tool_executor": {
+      "type": "safe",
+      "config": {
+        "default_timeout_ms": 30000,
+        "allow_stream_passthrough": true
+      }
+    }
+  }
+  ```
+
 - `retry` — 包装一个 inner executor，按错误类型指数退避重试
+
 - `filesystem_aware` — 内嵌 `FilesystemExecutionPolicy`，替代旧 `execution_policy: filesystem` 用法：
+
   ```json
   {
     "tool_executor": {
       "type": "filesystem_aware",
       "config": {
-        "read_roots": ["workspace"],
-        "write_roots": ["workspace"],
-        "allow_tools": ["read_file", "write_file"]
+        "read_roots": ["./workspace"],
+        "write_roots": ["./workspace"],
+        "allow_tools": ["read_file", "write_file", "list_files"],
+        "deny_tools": []
       }
     }
   }
   ```
+
+  | 字段 | 类型 | 默认值 | 说明 |
+  |---|---|---|---|
+  | `read_roots` | list[str] | `[]` | 可读路径前缀列表；空列表 = 不限制 |
+  | `write_roots` | list[str] | `[]` | 可写路径前缀列表；空列表 = 不限制 |
+  | `allow_tools` | list[str] | `[]` | 白名单 tool id；**空列表 = 允许所有 tool** |
+  | `deny_tools` | list[str] | `[]` | 黑名单 tool id；deny 优先于 allow |
+
+  !!! note
+      `allow_tools` 为空代表**允许所有**工具；如果只想放行部分工具，需显式列出。
+      `deny_tools` 的优先级高于 `allow_tools`。
 
 需要多种 policy 组合（例如 filesystem + network allowlist）时，写一个自定义
 `ToolExecutorPlugin` 子类并覆写 `evaluate_policy()`，内部组合
@@ -481,7 +580,41 @@ builtin：
 
 - `truncating`、`head_tail`、`sliding_window`、`importance_weighted`
 
-## 11. Follow-up / Empty-response 兜底（pattern 方法覆写）
+## 11. 结构化输出配置（RunRequest 字段）{#runrequest}
+
+`output_type` 和相关 budget 字段是运行时传参，**不在 JSON 配置文件**里声明。
+它们通过 `RunRequest` 在每次调用时传入：
+
+```python
+from pydantic import BaseModel
+from openagents.interfaces.runtime import RunRequest, RunBudget
+
+class MyOutput(BaseModel):
+    answer: str
+    confidence: float
+
+request = RunRequest(
+    agent_id="assistant",
+    session_id="s1",
+    input_text="hello",
+    output_type=MyOutput,          # 结构化输出 Pydantic model
+    budget=RunBudget(
+        max_steps=8,
+        max_validation_retries=3,  # 结构化输出验证失败最多重试次数
+        max_duration_ms=60000,
+    ),
+)
+result = await runtime.run_detailed(request)
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `output_type` | `type[BaseModel]` \| null | 结构化输出 Pydantic model；None = 纯文本 |
+| `budget.max_steps` | int | 覆盖 agent config 里的 `max_steps` |
+| `budget.max_validation_retries` | int | 结构化输出验证失败时的最大重试次数 |
+| `budget.max_duration_ms` | int \| null | 整体运行超时 |
+
+## 12. Follow-up / Empty-response 兜底（pattern 方法覆写）{#followup}
 
 旧版本独立的 `followup_resolver` / `response_repair_policy` 两个 seam 已经合并为
 `PatternPlugin` 上的两个可选方法覆写。需要本地短路回答 follow-up 或降级空响应时，
@@ -503,7 +636,7 @@ class MyPattern(ReActPattern):
 - `examples/research_analyst/app/followup_pattern.py`（rule-based follow-up 覆写）
 - `examples/production_coding_agent/app/plugins.py`（coding journal follow-up + error-mode repair）
 
-## 12. runtime.config 里的 seam 默认值
+## 13. runtime.config 里的 seam 默认值
 
 builtin `default` runtime 还支持在 `runtime.config` 里声明 seam 默认值。
 
@@ -535,7 +668,7 @@ builtin `default` runtime 还支持在 `runtime.config` 里声明 seam 默认值
 - 多个 agent 共享同一套默认执行策略
 - 不想在每个 agent 上重复写一遍相同 seam 配置
 
-## 13. Decorator 注册
+## 14. Decorator 注册
 
 当前代码里，这些类别都支持 decorator registry：
 
@@ -554,7 +687,7 @@ builtin `default` runtime 还支持在 `runtime.config` 里声明 seam 默认值
 - decorator 注册是进程内生效
 - 对应模块必须先被 import，注册名才会存在
 
-## 14. 哪些东西不该放进配置 schema
+## 15. 哪些东西不该放进配置 schema
 
 SDK config 不应该建模所有产品协议。
 
@@ -569,7 +702,7 @@ SDK config 不应该建模所有产品协议。
 
 这些东西更应该放在 app-defined protocol 里。
 
-## 15. 继续阅读
+## 16. 继续阅读
 
 - [开发者指南](developer-guide.md)
 - [Seam 与扩展点](seams-and-extension-points.md)

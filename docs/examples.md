@@ -102,13 +102,15 @@ uv run pytest -q tests/integration/test_production_coding_agent_example.py
 
 ## 如果你想学自定义扩展
 
-虽然当前 repo 不再保留一堆独立 demo 目录，但“怎么自定义”并没有消失，主要参考面是：
+虽然当前 repo 不再保留一堆独立 demo 目录，但”怎么自定义”并没有消失，主要参考面是：
 
 - `tests/fixtures/custom_plugins.py`
 - `tests/fixtures/runtime_plugins.py`
 - `tests/unit/test_plugin_loader.py`
 - `tests/unit/test_runtime_orchestration.py`
 - `examples/production_coding_agent/app/`
+- `openagents/plugins/builtin/tool_executor/filesystem_aware.py` — filesystem 执行策略示例（`FilesystemAwareToolExecutor`，展示 `evaluate_policy()` 的结构）
+- `openagents/plugins/builtin/pattern/react.py` — `ReActPattern` 源码，展示 `resolve_followup()` 和 `repair_empty_response()` 的实际调用点
 
 ## 推荐阅读顺序
 
@@ -119,14 +121,23 @@ uv run pytest -q tests/integration/test_production_coding_agent_example.py
 3. [插件开发](plugin-development.md)
 4. [仓库结构](repository-layout.md)
 
+## 运行集成测试
+
+所有维护中示例都有配套的集成测试：
+
+```bash
+# 运行全部集成测试
+uv run pytest -q tests/integration/
+```
+
 ## research_analyst
 
 该示例展示 post-seam-consolidation（2026-04-18）的扩展方式如何在一个真实任务里串起来。
 
 | 机制 | 实现位置 | 作用 |
 | --- | --- | --- |
-| 自定义 `tool_executor` | `examples/research_analyst/app/executor.py::SandboxedResearchExecutor` | 覆写 `evaluate_policy()`：内嵌 `CompositePolicy` AND-组合 filesystem + network allowlist；`execute()` 委托给 `RetryToolExecutor(inner=SafeToolExecutor)` 实现重试 + 超时 |
-| pattern 子类 + `resolve_followup()` 覆写 | `FollowupFirstReActPattern`（`followup_pattern.py`）| 继承 builtin `ReActPattern`，加载 `followup_rules.json` 后在 `resolve_followup()` 里做 regex → 模板本地解析；builtin `ReActPattern.execute()` 会先调用它短路 LLM |
+| 自定义 `tool_executor` | `examples/research_analyst/app/executor.py::SandboxedResearchExecutor` | 继承 `SafeToolExecutor`，覆写 `evaluate_policy()`：内嵌 `CompositePolicy` AND-组合 filesystem + network allowlist；`execute()` 委托给 `RetryToolExecutor(inner=SafeToolExecutor)` 实现重试 + 超时 |
+| pattern 子类 + `resolve_followup()` 覆写 | `FollowupFirstReActPattern`（`examples/research_analyst/app/followup_pattern.py`）| 继承 builtin `ReActPattern`，加载 `followup_rules.json` 后在 `resolve_followup()` 里做 regex → 模板本地解析；builtin `ReActPattern.execute()` 会先调用它短路 LLM |
 | `session` | builtin `jsonl_file` | 全部 transcript / artifact / checkpoint 落盘到 `sessions/<sid>.jsonl`；重启后可重放 |
 | `events` | builtin `file_logging` | 所有事件追加到 `sessions/events.ndjson`，便于审计 |
 

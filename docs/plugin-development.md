@@ -58,11 +58,14 @@ loader 会检查两件事：
 
 | 类型 | 必需 capability | 必需方法 |
 | --- | --- | --- |
-| pattern | `pattern.execute` | `execute()` |
-| tool | `tool.invoke` | `invoke()` |
-| runtime | `runtime.run` | `run()` |
-| session | `session.manage` | `session()` |
-| events | `event.emit` | `emit()`，并要求 `subscribe()` |
+| `pattern` | `pattern.execute` | `execute()` |
+| `tool` | `tool.invoke` | `invoke()`, `schema()` |
+| `runtime` | `runtime.run` | `run()` |
+| `session` | `session.manage` | `session()` |
+| `events` | `event.emit` | `emit()`, `subscribe()` |
+| `tool_executor` | — | `execute()`, `execute_stream()` |
+| `context_assembler` | — | `assemble()`, `finalize()` |
+| `skills` | — | plugin-defined（`local` builtin 实现发现/预热/注入） |
 
 ### memory
 
@@ -70,6 +73,16 @@ memory 稍微特殊一点：
 
 - 如果声明了 `memory.inject`，就必须实现 `inject()`
 - 如果声明了 `memory.writeback`，就必须实现 `writeback()`
+
+### 可选覆写
+
+以下方法不是 capability 检查的一部分，但 builtin runtime 会在存在时调用：
+
+| 类型 | 可选方法 | 说明 |
+| --- | --- | --- |
+| `pattern` | `resolve_followup()` | 本地短路 follow-up（返回 `None` = abstain） |
+| `pattern` | `repair_empty_response()` | 空响应降级（返回 `None` = abstain） |
+| `tool_executor` | `evaluate_policy()` | 权限判断（默认 allow-all） |
 
 ## 5. 最重要的判断
 
@@ -141,6 +154,40 @@ class EchoTool(ToolPlugin):
   ]
 }
 ```
+
+### TypedConfigPluginMixin
+
+推荐使用 `TypedConfigPluginMixin` 让 `self.config`（raw dict）自动验证为强类型的
+`self.cfg`（Pydantic model）：
+
+```python
+from pydantic import BaseModel
+from openagents.interfaces.typed_config import TypedConfigPluginMixin
+
+class EchoTool(TypedConfigPluginMixin, ToolPlugin):
+    class Config(BaseModel):
+        prefix: str = "echo"
+        max_length: int = 500
+
+    def __init__(self, config=None):
+        super().__init__(config=config or {}, capabilities={TOOL_INVOKE})
+        self._init_typed_config()
+        # self.cfg 是经过验证的 Config 实例
+        self._prefix = self.cfg.prefix
+        self._max_length = self.cfg.max_length
+
+    async def invoke(self, params, context):
+        text = str(params.get("text", "")).strip()[: self.cfg.max_length]
+        return {"output": f"{self._prefix}: {text}"}
+```
+
+要点：
+
+- `Config` 是嵌套的 `pydantic.BaseModel`
+- `_init_typed_config()` 必须在 `super().__init__()` 之后显式调用
+- Mixin 必须放在 plugin ABC **前面**，否则 `super().__init__` 无法解析到 ABC
+- 未知 config 键只发 warning（0.3.x 迁移安全），未来版本可能切换为 `extra='forbid'`
+- 配置验证失败时抛 `PluginConfigError` 并附带 schema hint
 
 ## 7. 自定义 Memory
 
@@ -243,7 +290,7 @@ Skill 适合做 runtime augmentation，不适合接管整个 agent loop。
 
 ## 10. 自定义 Tool Executor
 
-当问题是“tool 应该怎么执行”时，用 `tool_executor`。
+当问题是”tool 应该怎么执行”时，用 `tool_executor`。
 
 常见场景：
 
@@ -255,11 +302,11 @@ Skill 适合做 runtime augmentation，不适合接管整个 agent loop。
 最小契约：
 
 - `execute(request) -> ToolExecutionResult`
-- `execute_stream(request)`
+- `execute_stream(request)`（async generator）
 
 ## 11. 自定义 Tool Policy（覆写 `evaluate_policy()`）
 
-当问题是“tool 能不能执行”时，写一个 `ToolExecutorPlugin` 子类并覆写
+当问题是”tool 能不能执行”时，写一个 `ToolExecutorPlugin` 子类并覆写
 `evaluate_policy()`。原先独立的 `execution_policy` seam 在 2026-04-18 合并中
 已并入 `tool_executor`。
 
@@ -274,13 +321,43 @@ Skill 适合做 runtime augmentation，不适合接管整个 agent loop。
 
 - `evaluate_policy(request) -> PolicyDecision`（默认 allow-all）
 
+示例（继承 `SafeToolExecutor` 并覆写 `evaluate_policy`）：
+
+```python
+from openagents.interfaces.tool import ToolExecutionRequest, PolicyDecision
+from openagents.plugins.builtin.tool_executor.safe import SafeToolExecutor
+
+
+class MyRestrictedExecutor(SafeToolExecutor):
+    ALLOWED_TOOLS = {“read_file”, “http_request”}
+
+    async def evaluate_policy(self, request: ToolExecutionRequest) -> PolicyDecision:
+        if request.tool_id not in self.ALLOWED_TOOLS:
+            return PolicyDecision(
+                allowed=False,
+                reason=f”tool '{request.tool_id}' not in allowlist”,
+            )
+        return PolicyDecision(allowed=True)
+```
+
+配置方式：
+
+```json
+{
+  “tool_executor”: {
+    “impl”: “myapp.executor.MyRestrictedExecutor”
+  }
+}
+```
+
 参考：
+
 - builtin `filesystem_aware` 是最简单例子（只包一个 `FilesystemExecutionPolicy`）
 - `examples/research_analyst/app/executor.py` 展示如何用 `CompositePolicy` 组合多个 policy helper
 
 ## 12. 自定义 Context Assembler
 
-当问题是“run 应该吃进什么上下文”时，用 `context_assembler`。
+当问题是”run 应该吃进什么上下文”时，用 `context_assembler`。
 
 常见场景：
 
@@ -295,9 +372,57 @@ Skill 适合做 runtime augmentation，不适合接管整个 agent loop。
 - `assemble(request, session_state, session_manager) -> ContextAssemblyResult`
 - `finalize(request, session_state, session_manager, result) -> result`
 
+推荐继承 `BaseContextAssembler`（来自
+`openagents.plugins.builtin.context.base`），它提供了 token-budget 截断的
+helper 方法，使策略实现只需关注排序逻辑：
+
+```python
+from openagents.plugins.builtin.context.base import TokenBudgetContextAssembler
+from openagents.interfaces.context import ContextAssemblyResult
+
+
+class MyContextAssembler(TokenBudgetContextAssembler):
+    “””Assembles context with custom retrieval injection.”””
+
+    async def assemble(self, request, session_state, session_manager):
+        # 1. 构造消息列表
+        messages = list(session_state.get(“transcript”, []))
+
+        # 2. 注入 app-defined 内容（例如 retrieval 结果）
+        retrieval = request.context_hints.get(“retrieval_results”, [])
+        if retrieval:
+            messages.append({
+                “role”: “system”,
+                “content”: “Relevant context:\n” + “\n”.join(retrieval),
+            })
+
+        return ContextAssemblyResult(
+            messages=messages,
+            metadata={“retrieval_count”: len(retrieval)},
+        )
+
+    async def finalize(self, request, session_state, session_manager, result):
+        # 可选：run 结束后更新 session state
+        return result
+```
+
+配置方式：
+
+```json
+{
+  “context_assembler”: {
+    “impl”: “myapp.context.MyContextAssembler”,
+    “config”: {
+      “max_input_tokens”: 16000,
+      “reserve_for_response”: 4000
+    }
+  }
+}
+```
+
 这也是承载 app-defined context protocol 的最佳 seam 之一。
 
-## 13. 自定义 Follow-up / Repair（覆写 `PatternPlugin` 方法）
+## 13. 自定义 PatternPlugin（resolve_followup + repair_empty_response）
 
 旧版本独立的 `followup_resolver` / `response_repair_policy` 两个 seam 在 2026-04-18 合并中
 已并入 `PatternPlugin`。改为在自己的 pattern 子类上覆写两个可选方法：
@@ -320,6 +445,33 @@ class MyPattern(ReActPattern):
 
 builtin `ReActPattern.execute()` 会先调用它；返回 `status="resolved"` 时短路 LLM。
 推荐状态：`resolved` / `abstain` / `error`（返回 `None` 等同 abstain）。
+
+完整示例（匹配特殊关键字时本地短路）：
+
+```python
+from openagents.plugins.builtin.pattern.react import ReActPattern
+from openagents.interfaces.followup import FollowupResolution
+from openagents.interfaces.response_repair import ResponseRepairDecision
+
+
+class SmartReActPattern(ReActPattern):
+    async def resolve_followup(self, *, context):
+        # 返回 None 表示 abstain（交给 LLM 处理）
+        # 返回 FollowupResolution(status="resolved", output=...) 短路 LLM
+        if context.input_text.lower() == "status":
+            return FollowupResolution(
+                status="resolved",
+                output="Running.",
+            )
+        return None  # abstain
+
+    async def repair_empty_response(
+        self, *, context, messages, assistant_content, stop_reason, retries
+    ):
+        # 返回 None 表示 abstain
+        # 返回 ResponseRepairDecision(status="repaired", output=...) 恢复
+        return None  # abstain
+```
 
 ### `PatternPlugin.repair_empty_response()`
 
@@ -409,28 +561,26 @@ class TrimmedContextAssembler:
 
 如果只有一个产品会用，先在 app 层做协议，不要急着进 SDK。
 
-## 17. 如何测试 plugin
+## 17. 插件测试模式
 
-最实用的测试路径是：
+### 推荐测试路径
 
-1. 构造一个 config dict
-2. `load_config_dict()`
-3. `Runtime(config)`
-4. 运行目标 agent
-5. 断言输出、session state、事件或 artifacts
+1. 用 `Runtime.from_dict({...})` 配合 `provider: "mock"` 构造最小 runtime
+2. 调用 `runtime.run()` 或 `runtime.run_detailed()`
+3. 断言输出、session state、事件或 artifacts
 
-示例：
+使用 `Runtime.from_dict` 而非 `load_config_dict` + `Runtime(config)` 可以减少一步，
+并在配置解析失败时提供更清晰的错误：
 
 ```python
 import pytest
 
-from openagents.config.loader import load_config_dict
 from openagents.runtime.runtime import Runtime
 
 
 @pytest.mark.asyncio
 async def test_custom_tool_plugin():
-    config = load_config_dict(
+    runtime = Runtime.from_dict(
         {
             "version": "1.0",
             "agents": [
@@ -442,23 +592,69 @@ async def test_custom_tool_plugin():
                     "llm": {"provider": "mock"},
                     "tools": [
                         {"id": "custom_tool", "impl": "tests.fixtures.custom_plugins.CustomTool"}
-                    ]
+                    ],
                 }
-            ]
+            ],
         }
     )
-    runtime = Runtime(config)
     result = await runtime.run(agent_id="test", session_id="s1", input_text="hello")
     assert result
 ```
 
+### 测试 ToolExecutor
+
+```python
+@pytest.mark.asyncio
+async def test_restricted_executor_blocks_unknown_tool():
+    runtime = Runtime.from_dict(
+        {
+            "version": "1.0",
+            "agents": [
+                {
+                    "id": "agent",
+                    "name": "agent",
+                    "memory": {"type": "buffer"},
+                    "pattern": {"type": "react"},
+                    "llm": {"provider": "mock"},
+                    "tool_executor": {
+                        "impl": "myapp.executor.MyRestrictedExecutor",
+                    },
+                    "tools": [
+                        {"id": "dangerous_tool", "impl": "tests.fixtures.custom_plugins.DangerousTool"},
+                    ],
+                }
+            ],
+        }
+    )
+    result = await runtime.run(agent_id="agent", session_id="s1", input_text="run dangerous_tool")
+    # MyRestrictedExecutor should have blocked the tool
+    assert "not in allowlist" in str(result)
+```
+
+### 测试事件
+
+```python
+@pytest.mark.asyncio
+async def test_events_emitted():
+    events_received = []
+
+    runtime = Runtime.from_dict({
+        "version": "1.0",
+        "events": {"type": "async"},
+        "agents": [...],
+    })
+    runtime.event_bus.subscribe("tool.*", lambda e: events_received.append(e))
+    await runtime.run(agent_id="agent", session_id="s1", input_text="hello")
+    assert any(e.name.startswith("tool.") for e in events_received)
+```
+
 仓库里的好参考：
 
-- `tests/unit/test_plugin_loader.py`
-- `tests/unit/test_runtime_orchestration.py`
-- `tests/fixtures/custom_plugins.py`
-- `tests/fixtures/runtime_plugins.py`
-- `examples/production_coding_agent/`
+- `tests/unit/test_plugin_loader.py` — plugin 加载和 capability 校验
+- `tests/unit/test_runtime_orchestration.py` — 端到端 runtime 流程
+- `tests/fixtures/custom_plugins.py` — 各类 plugin 的最小实现模板
+- `tests/fixtures/runtime_plugins.py` — 自定义 runtime/session plugin 示例
+- `examples/production_coding_agent/` — 完整的 production 级插件组合
 
 ## 18. Typed Config
 
@@ -570,7 +766,7 @@ raise PluginLoadError(
 )
 ```
 
-`str(exc)` 会自动多出一行 `  hint: ...`；首行保持原 message 不变以保护
+`str(exc)` 会自动多出一行 `hint: ...`；首行保持原 message 不变以保护
 日志聚合。
 
 ## 22. 事件分类（Spec B WP2）

@@ -23,6 +23,7 @@ This spec addresses all five in one PR-shape, fully backward compatible.
 ### 1.1 Audit confirmation
 
 Before drafting, the plugin tree was scanned for:
+
 - 132 raise/except occurrences across 21 builtin files; most have no `hint`/`docs_url` companion text.
 - Event names exist consistently (dotted form like `tool.called`, `pattern.step_started`) but no schema or required-payload documentation.
 - 5 builtins surface candidate concurrency / IO-failure risks: `session/jsonl_file`, `events/file_logging`, `memory/chain`, `tool_executor/retry`, `runtime/default_runtime`.
@@ -338,6 +339,7 @@ class FooBar(...):
 ```
 
 **Scope** — every plugin class in `openagents/plugins/builtin/**/*.py`:
+
 - 4 memory builtins
 - 3 pattern builtins
 - 4 context_assembler builtins
@@ -377,6 +379,7 @@ This test is the enforcement; once green, future builtins must follow.
 #### 3.5.1 Mechanical change
 
 `pyproject.toml`:
+
 ```toml
 [tool.coverage.report]
 fail_under = 92  # was 90

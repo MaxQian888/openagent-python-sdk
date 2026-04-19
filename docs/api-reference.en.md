@@ -82,13 +82,21 @@ Its purpose is to tell you: **where the current stable API surface is.**
 
 ## 2. Runtime facade
 
-### `Runtime(config: AppConfig, _skip_plugin_load: bool = False, _config_path: Path | None = None)`
+### `Runtime(config: AppConfig, *, _config_path: Path | None = None)`
 
-The external runtime facade. Internally holds:
+The external runtime facade. ``config.agents`` must be non-empty; the top-level ``runtime``/``session``/``events``/``skills`` fields may all be omitted — the pydantic schema fills them in with builtin defaults (``default``/``in_memory``/``async``/``local``) and the plugin loader resolves everything through a single path.
+
+Internally holds:
 
 - The app config
-- Top-level runtime / session / events components
+- Top-level runtime / session / events / skills components (always loader-resolved)
 - A per-(session, agent) plugin bundle cache
+
+```python
+Runtime(AppConfig(agents=[...]))       # agents only — rest defaulted by schema
+Runtime.from_dict({"agents": [...]})   # minimal dict
+Runtime.from_config("agent.json")      # full JSON
+```
 
 ### `Runtime.from_config(config_path: str | Path) -> Runtime`
 
@@ -379,6 +387,32 @@ Fields:
 - `timeout_ms: int = 30000`
 - `stream_endpoint: str | None`
 - `pricing: LLMPricing | None` — overrides the built-in price table
+- `retry: LLMRetryOptions | None` — transport-level retry policy (default `None` → providers use built-in defaults: 3 attempts, exponential 500ms→2000ms→5000ms backoff, auto-retries 429/502/503/504 + Anthropic 529 + `httpx.ConnectError`/`ReadTimeout`)
+- `extra_headers: dict[str, str] | None` — merged into every request; user keys override provider defaults (e.g. `{"anthropic-beta": "prompt-caching-2024-07-31"}`)
+- `reasoning_model: bool | None` — `openai_compatible` only: explicitly mark a reasoning-family model (o1/o3/o4/gpt-5-thinking…). `None` uses a regex on the model name. `True` emits `max_completion_tokens` and drops `temperature`
+- `openai_api_style: Literal["chat_completions", "responses"] | None` — `openai_compatible` only: pick the OpenAI API style. `None` auto-detects from `api_base` (trailing `/responses` → `"responses"`, else `"chat_completions"`). Responses API (v2) uses a different payload shape: `messages` → `input` + `instructions`; `max_tokens` → `max_output_tokens`; `response_format` → `text.format` (flattened, no nested `json_schema`). The response `output[]` array contains items with `type` of `message`/`reasoning`/`function_call`. Streaming is currently natively supported only for Chat Completions; the Responses API path falls back to a single non-streaming call inside `complete_stream()`
+- `seed` / `top_p` / `parallel_tool_calls` — `openai_compatible` only (forwarded via `extra="allow"`); merged into every request payload
+
+### `LLMRetryOptions`
+
+- `max_attempts: int = 3` (set to `1` to disable retry)
+- `initial_backoff_ms: int = 500`
+- `max_backoff_ms: int = 5000`
+- `backoff_multiplier: float = 2.0`
+- `retry_on_connection_errors: bool = True`
+- `total_budget_ms: int | None = None` — total wall-clock budget; no new attempts are issued after the budget is exhausted
+
+### `LLMChunk`
+
+Streaming chunk, new field:
+
+- `error_type: Literal["rate_limit", "connection", "response", "unknown"] | None = None` — always `None` on non-error chunks; on error chunks this mirrors the typed `LLMError` hierarchy
+
+### Provider behavior notes
+
+**Anthropic** — `content` preserves `thinking` / `redacted_thinking` blocks (never concatenated into `output_text`); `system` accepts `str` or `list[dict]` (the list form preserves block-level `cache_control`); `cache_control` on `tools` and message content blocks passes through unchanged; `529` is classified as `rate_limit` and included in the retry set.
+
+**OpenAI-compatible** — reasoning-family models (`o\d+(-.*)?` / `gpt-5-thinking*` or `reasoning_model=True`) use `max_completion_tokens` and drop `temperature`; `usage.completion_tokens_details.reasoning_tokens` lands in `LLMUsage.metadata["reasoning_tokens"]` (not double-counted into `output_tokens`); `finish_reason="tool_calls"` is unified to `stop_reason="tool_use"`.
 
 ## 8. Runtime protocol
 
@@ -745,6 +779,18 @@ without the extra raises `PluginLoadError` with an install hint.
 Install with `uv sync --extra <name>` (or `uv sync --extra all`). Each
 module is also added to `[tool.coverage.report] omit` in `pyproject.toml`
 so the 92% coverage floor stays intact when the extra is not installed.
+
+### 18.1 `McpTool` lifecycle config (new in 0.3.x)
+
+`McpTool.Config` adds the following fields on top of `server` and `tools`:
+
+- `connection_mode: "per_call" | "pooled"` (default `per_call`). `per_call` preserves the anyio cancel-scope invariant — a dying subprocess cannot cancel the caller's next `await`. `pooled` reuses one long-lived session so N tool calls cost one subprocess spawn.
+- `probe_on_preflight: bool` (default `false`). When `true`, `preflight()` opens a throwaway session and calls `list_tools` before the agent loop starts, surfacing unreachable servers as `PermanentToolError`.
+- `dedup_inflight: bool` (default `true`). In `per_call` mode, coalesces concurrent `invoke()` calls with the same `(tool, arguments)` so parallel identical calls share a single session.
+
+`ToolPlugin` exposes an optional hook `async def preflight(self, context) -> None`. The default is a no-op, so existing tools are unaffected. `DefaultRuntime` invokes every tool's `preflight` once per session before the first agent turn. `McpTool` overrides it to verify the `mcp` extra is importable, that the stdio `command` is on `PATH` (via `shutil.which`), and that any HTTP URL is well-formed. Failures raise `PermanentToolError`, which the runtime translates into a `RunResult` with `stop_reason=failed` — the pattern loop never runs.
+
+Structured events emitted: `tool.preflight`, `tool.mcp.preflight`, `tool.mcp.connect`, `tool.mcp.call`, `tool.mcp.close`. Payloads carry only identifiers, status, and timing; they never include tool arguments, results, or request headers.
 
 ## 19. Further reading
 

@@ -36,8 +36,8 @@ class ChainMemory(MemoryPlugin):
 
     def _load_memories(self) -> None:
         """Load and instantiate memories from config."""
-        from openagents.plugins.loader import load_plugin
         from openagents.config.schema import MemoryRef
+        from openagents.plugins.loader import load_plugin
 
         memories_config = self.config.get("memories", [])
         if not memories_config:

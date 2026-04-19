@@ -14,11 +14,11 @@ from .run_context import RunContext
 from .tool import ToolExecutionResult
 
 if TYPE_CHECKING:
-    from .followup import FollowupResolution
     from .events import EventBusPlugin
+    from .followup import FollowupResolution
     from .response_repair import ResponseRepairDecision
-    from .session import SessionArtifact
     from .runtime import RunArtifact, RunRequest, RunUsage
+    from .session import SessionArtifact
     from .tool import ToolExecutor
 
 

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from openagents.cli.list_plugins_cmd import run as list_plugins_run
 from openagents.cli.main import main as cli_main
 from openagents.cli.schema_cmd import run as schema_run

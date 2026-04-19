@@ -8,7 +8,6 @@ from typing import Any
 
 from .models import OpenAgentSkillInput
 
-
 _VALID_AGENT_MODES = {"subagent", "team-role"}
 
 

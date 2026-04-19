@@ -17,8 +17,10 @@ from openagents.interfaces.typed_config import TypedConfigPluginMixin
 class HttpRequestTool(TypedConfigPluginMixin, ToolPlugin):
     """Make HTTP request.
 
-    What: synchronous urllib HTTP client run on a worker thread; supports GET/POST/PUT/DELETE/PATCH with JSON or raw body.
-    Usage: ``{"id": "http", "type": "http_request", "config": {"timeout": 30}}``; invoke with ``{"url": "...", "method": "GET", "headers": {...}, "body": ...}``.
+    What: synchronous urllib HTTP client run on a worker thread; supports
+    GET/POST/PUT/DELETE/PATCH with JSON or raw body.
+    Usage: ``{"id": "http", "type": "http_request", "config": {"timeout": 30}}``; invoke with
+    ``{"url": "...", "method": "GET", "headers": {...}, "body": ...}``.
     Depends on: stdlib ``urllib.request``; pair with ``network_allowlist`` execution policy.
     """
 

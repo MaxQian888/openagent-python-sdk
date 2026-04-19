@@ -58,10 +58,18 @@ production_coding_agent/
 Run:
 
 ```bash
+# Canonical entry — goes through the built-in CLI.
+openagents run examples/production_coding_agent/agent.json \
+    --input "implement TicketService.close_ticket and add tests"
+
+# Interactive multi-turn chat against the same agent:
+openagents chat examples/production_coding_agent/agent.json
+
+# Legacy demo script — equivalent, kept for illustration:
 uv run python examples/production_coding_agent/run_demo.py
 ```
 
-Benchmark:
+Benchmark (unchanged — this is a harness, not a one-shot run):
 
 ```bash
 uv run python examples/production_coding_agent/run_benchmark.py

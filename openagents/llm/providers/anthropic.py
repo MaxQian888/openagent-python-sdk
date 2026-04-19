@@ -6,11 +6,24 @@ import json
 import os
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
+from openagents.errors.exceptions import (
+    LLMConnectionError,
+    LLMRateLimitError,
+    LLMResponseError,
+)
 from openagents.llm.base import LLMChunk, LLMResponse, LLMToolCall, LLMUsage
-from openagents.llm.providers._http_base import HTTPProviderClient
+from openagents.llm.providers._http_base import (
+    HTTPProviderClient,
+    _classify_status,
+    _RetryPolicy,
+)
 
 if TYPE_CHECKING:
     from openagents.config.schema import LLMPricing
+
+
+# Anthropic-specific retryable status: baseline 429/502/503/504 plus 529 (overloaded).
+_ANTHROPIC_EXTRA_RETRYABLE_STATUS: frozenset[int] = frozenset({529})
 
 
 _ANTHROPIC_PRICE_TABLE: dict[str, dict[str, float]] = {
@@ -33,6 +46,37 @@ def _parse_usage(payload: dict[str, Any] | None) -> LLMUsage | None:
         total_tokens=int(payload.get("total_tokens", 0) or 0),
         metadata=meta,
     ).normalized()
+
+
+def _coalesce_system_content(parts: list[Any]) -> Any:
+    """Combine multiple system-role payloads into a single value.
+
+    If every part is already a list-of-blocks, concatenate into one list (this
+    preserves block-level keys like ``cache_control``). Otherwise render as a
+    single joined string for the legacy string path. Empty / None parts are
+    skipped.
+    """
+    filtered: list[Any] = [part for part in parts if part]
+    if not filtered:
+        return ""
+    if all(isinstance(part, list) for part in filtered):
+        combined: list[Any] = []
+        for part in filtered:
+            combined.extend(part)
+        return combined
+    # Mixed or string-only: convert list-of-blocks to concatenated block texts,
+    # then join every part with newlines.
+    strings: list[str] = []
+    for part in filtered:
+        if isinstance(part, list):
+            for block in part:
+                if isinstance(block, dict):
+                    text = block.get("text")
+                    if isinstance(text, str):
+                        strings.append(text)
+        else:
+            strings.append(str(part))
+    return "\n".join(strings)
 
 
 def _parse_tool_input(raw: Any) -> tuple[dict[str, Any], str | None]:
@@ -62,8 +106,33 @@ class AnthropicClient(HTTPProviderClient):
         max_tokens: int = 1024,
         stream_endpoint: str | None = None,
         pricing: "LLMPricing | None" = None,
+        retry_policy: _RetryPolicy | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
-        super().__init__(timeout_ms=timeout_ms)
+        # Merge Anthropic-specific retryable status (529 overloaded) into the policy
+        if retry_policy is None:
+            effective_policy = _RetryPolicy(
+                retryable_status=frozenset(
+                    _RetryPolicy().retryable_status | _ANTHROPIC_EXTRA_RETRYABLE_STATUS
+                )
+            )
+        else:
+            effective_policy = _RetryPolicy(
+                max_attempts=retry_policy.max_attempts,
+                initial_backoff_ms=retry_policy.initial_backoff_ms,
+                max_backoff_ms=retry_policy.max_backoff_ms,
+                backoff_multiplier=retry_policy.backoff_multiplier,
+                retry_on_connection_errors=retry_policy.retry_on_connection_errors,
+                total_budget_ms=retry_policy.total_budget_ms,
+                retryable_status=frozenset(
+                    retry_policy.retryable_status | _ANTHROPIC_EXTRA_RETRYABLE_STATUS
+                ),
+            )
+        super().__init__(
+            timeout_ms=timeout_ms,
+            retry_policy=effective_policy,
+            extra_headers=extra_headers,
+        )
         self.api_base = api_base.rstrip("/")
         self.model = model
         self.api_key = api_key
@@ -160,15 +229,17 @@ class AnthropicClient(HTTPProviderClient):
         chosen_max_tokens = max_tokens or self.default_max_tokens
 
         anthropic_messages: list[dict[str, Any]] = []
-        system_prompt = ""
+        system_parts: list[Any] = []
 
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role == "system":
-                system_prompt = str(content)
+                system_parts.append(content)
             elif role in ("user", "assistant"):
                 anthropic_messages.append({"role": role, "content": content})
+
+        system_value: Any = _coalesce_system_content(system_parts)
 
         payload_tools = list(tools or [])
         chosen_tool_choice = tool_choice
@@ -181,8 +252,8 @@ class AnthropicClient(HTTPProviderClient):
             "messages": anthropic_messages,
             "max_tokens": chosen_max_tokens,
         }
-        if system_prompt:
-            payload["system"] = system_prompt
+        if system_value:
+            payload["system"] = system_value
         if chosen_temp is not None:
             payload["temperature"] = chosen_temp
         if payload_tools:
@@ -255,16 +326,18 @@ class AnthropicClient(HTTPProviderClient):
             structured_tool_name=structured_tool_name,
             structured_tool=structured_tool,
         )
+        url = self._messages_endpoint()
         response = await self._request(
             "POST",
-            self._messages_endpoint(),
+            url,
             headers=headers,
             json_body=payload,
         )
-        if response.status_code != 200:
-            raise RuntimeError(f"HTTP {response.status_code}: {response.text[:500]}")
+        # _request returns the response on success OR non-retryable non-200.
+        # Convert non-200 into a typed error here.
+        self._raise_for_response_status(url=url, response=response)
 
-        data = response.json()
+        data = self._parse_response_json(url=url, response=response)
         content_blocks = data.get("content", [])
         output_parts: list[str] = []
         normalized_content: list[dict[str, Any]] = []
@@ -280,6 +353,10 @@ class AnthropicClient(HTTPProviderClient):
                 text = block.get("text", "")
                 if isinstance(text, str):
                     output_parts.append(text)
+            elif block_type in ("thinking", "redacted_thinking"):
+                # Preserve in content (already appended above) but do NOT add
+                # thinking text to output_text — it's model-internal reasoning.
+                continue
             elif block_type == "tool_use":
                 tool_name = str(block.get("name", ""))
                 tool_input, raw_arguments = _parse_tool_input(block.get("input"))
@@ -349,17 +426,33 @@ class AnthropicClient(HTTPProviderClient):
         pending_stop_reason: str | None = None
         tool_state: dict[int, dict[str, Any]] = {}
 
-        async with await self._stream(
-            "POST",
-            self._stream_endpoint_url(),
-            headers=headers,
-            json_body=payload,
-            read_timeout_s=120.0,
-        ) as response:
+        stream_url = self._stream_endpoint_url()
+        try:
+            response, stream_cm = await self._open_stream(
+                "POST",
+                stream_url,
+                headers=headers,
+                json_body=payload,
+                read_timeout_s=120.0,
+            )
+        except (LLMRateLimitError, LLMConnectionError, LLMResponseError) as exc:
+            yield self._yield_stream_error_chunk(exc=exc)
+            return
+
+        try:
+            # _open_stream either retried to success (200) or raised.
+            # A non-200 here would only come from a non-retryable status code.
             if response.status_code != 200:
                 body = await response.aread()
                 error_text = body.decode("utf-8", errors="replace")
-                yield LLMChunk(type="error", error=f"HTTP {response.status_code}: {error_text[:500]}")
+                classifier = _classify_status(
+                    int(response.status_code), self._retry_policy.retryable_status
+                )
+                yield LLMChunk(
+                    type="error",
+                    error=f"HTTP {response.status_code}: {error_text[:500]}",
+                    error_type=classifier,
+                )
                 return
 
             buffer = b""
@@ -547,6 +640,11 @@ class AnthropicClient(HTTPProviderClient):
                     content={"stop_reason": pending_stop_reason},
                     usage=latest_usage,
                 )
+        finally:
+            try:
+                await stream_cm.__aexit__(None, None, None)
+            except Exception:
+                pass
 
         self._store_response(
             LLMResponse(

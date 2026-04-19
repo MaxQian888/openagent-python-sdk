@@ -9,10 +9,10 @@ import pytest
 pytest.importorskip("aiosqlite")
 
 from openagents.interfaces.session import (
-    SessionArtifact,
     _ARTIFACTS_KEY,
     _CHECKPOINTS_KEY,
     _TRANSCRIPT_KEY,
+    SessionArtifact,
 )
 from openagents.plugins.builtin.session.sqlite_backed import SqliteSessionManager
 

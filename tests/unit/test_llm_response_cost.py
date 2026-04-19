@@ -1,5 +1,4 @@
 from openagents.config.schema import LLMPricing
-from openagents.llm.base import LLMUsage
 from openagents.llm.providers.anthropic import AnthropicClient
 
 

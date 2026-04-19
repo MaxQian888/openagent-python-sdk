@@ -1019,6 +1019,9 @@ Forward tool calls to an external MCP (Model Context Protocol) server. Supports 
 | `server.url` | `string` | Conditional | HTTP/SSE mode: server endpoint URL |
 | `server.headers` | `object` | No | HTTP/SSE mode: request headers |
 | `tools` | `array[string]` | No | Allowlist of tool names to expose; empty list means all tools |
+| `connection_mode` | `string` | No | `per_call` (default) or `pooled` — controls session lifetime; see below |
+| `probe_on_preflight` | `bool` | No | Defaults to `false`; when `true`, `preflight()` opens a throwaway session and calls `list_tools` once to verify reachability |
+| `dedup_inflight` | `bool` | No | Defaults to `true`; in `per_call` mode, coalesces concurrent calls with the same `(tool, arguments)` |
 
 **Invoke parameters**
 
@@ -1036,11 +1039,36 @@ Forward tool calls to an external MCP (Model Context Protocol) server. Supports 
 }
 ```
 
+**Connection modes: per_call vs pooled**
+
+- `per_call` (default): each `invoke()` opens a fresh stdio subprocess (or SSE session) and closes it before returning, all within the same event-loop task. This keeps anyio cancel scopes strictly bounded to the call, so a subprocess crash cannot cancel the caller's next `await`. The cost is one subprocess spawn per tool call — heavy for node-based or slow-import servers in long ReAct loops.
+- `pooled`: the first call opens a long-lived session and subsequent calls reuse it, serialized through an internal `asyncio.Lock`. N tool calls cost one subprocess spawn. **Trade-off**: if the pooled subprocess dies, its cancel scope may escape into the caller. We mitigate this by swapping the dead session on the *next* call (never inside the failing call), but you still must call `tool.close()` on runtime shutdown to drain the pool. An `atexit` hook performs a best-effort drain if the process is killed.
+- Use `pooled` when the same MCP server is hit many times per run and the server is stable; keep the default `per_call` when the server is unstable or you want strict cancel-scope isolation per call.
+
+**Preflight validation**
+
+`McpTool.preflight()` is invoked once per session by the runtime before the first agent turn. It surfaces misconfiguration up-front instead of mid-run:
+
+1. Verifies the `mcp` Python SDK is importable — raises `PermanentToolError` with an `uv sync --extra mcp` hint if missing.
+2. Validates the `server` config: stdio mode uses `shutil.which` to confirm `command` is on `PATH`; HTTP/SSE mode uses `urllib.parse` to reject malformed URLs.
+3. When `probe_on_preflight=true`, opens a throwaway connection and calls `list_tools` to confirm reachability (costs one extra subprocess spawn per session; off by default).
+
+A preflight failure turns into a `RunResult` with `stop_reason=failed`, and the error message names the failing tool id. The agent loop never runs.
+
+**Emitted events**
+
+When a `RunContext` with an event bus is available, the MCP tool emits structured events. Payloads carry only identifiers, status, and timing — never arguments or tool results:
+
+- `tool.mcp.preflight`: preflight finished (with `result: ok|error`).
+- `tool.mcp.connect`: session opened.
+- `tool.mcp.call`: call finished (with `success` and `duration_ms`).
+- `tool.mcp.close`: pooled session drained via `close()`.
+
 **Notes**
 
-- The connection is established on the first invocation and reused for subsequent calls
-- Invoking a tool not in the `tools` allowlist raises `ValueError`
-- The MCP connection is not automatically re-established after a server disconnect; re-initialize the tool instance to reconnect
+- In `per_call` mode the connection is opened and closed around each call; in `pooled` mode the first call establishes and later calls reuse it.
+- Invoking a tool not in the `tools` allowlist raises `ValueError`.
+- With `connection_mode="pooled"`, ensure the tool's `close()` is called on runtime shutdown (the runtime's own `close` cascades into plugin close). The `atexit` hook is only a last-resort safety net.
 
 ---
 
@@ -1094,6 +1122,33 @@ A representative `agent.json` using several builtin tools together:
 - **`mcp`**: Requires the `[mcp]` extra: `uv sync --extra mcp`. An empty `tools` list exposes all tools from the server — specify an explicit allowlist in production.
 - **`ripgrep`**: Requires the `rg` binary on `PATH`. If unavailable, the call raises `RuntimeError`; use `grep_files` as a fallback.
 - **`write_file` / `delete_file`**: Filesystem write operations are irreversible. Use in a sandboxed environment or with restricted paths.
+
+---
+
+## New builtins (0.4.0)
+
+### `shell_exec`
+
+Allowlist-aware shell command execution: `asyncio.create_subprocess_exec` + timeout + argv[0] allowlist.
+
+Config:
+- `cwd`: working directory
+- `env_passthrough`: allowlist of env var names inherited from parent
+- `command_allowlist`: allowlist of argv[0] values (`None` = unrestricted)
+- `default_timeout_ms`: default timeout (milliseconds)
+- `capture_bytes`: max bytes captured for stdout/stderr
+
+Invoke: `{"command": str | list[str], "cwd"?, "timeout_ms"?, "env"?}` → `{"exit_code", "stdout", "stderr", "timed_out", "truncated"}`.
+
+### `tavily_search`
+
+Tavily REST search tool (fallback for Tavily MCP). API key read from `TAVILY_API_KEY`.
+
+Invoke: `{"query": str, "max_results"?, "search_depth"?, "include_domains"?, "exclude_domains"?}` → `{"query", "results", "search_depth"}`.
+
+### `remember_preference`
+
+Companion to `markdown_memory`: queues `{category, rule, reason}` into `context.state['_pending_memory_writes']`, which `markdown_memory.writeback` drains to disk.
 
 ---
 

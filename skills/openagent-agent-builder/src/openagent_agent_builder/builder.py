@@ -37,7 +37,8 @@ def _build_integration_hints(payload: OpenAgentSkillInput, archetype: dict, hand
     hints = dict(archetype.get("integration_hints", {}))
     notes = list(hints.get("notes", []))
     notes.append(
-        f"Pass `{handoff_contract['expected_input']}` into this agent and expect `{handoff_contract['expected_output']}` back."
+        f"Pass `{handoff_contract['expected_input']}` into this agent and"
+        f" expect `{handoff_contract['expected_output']}` back."
     )
     return {
         "agent_mode": payload.agent_mode,

@@ -14,6 +14,9 @@ from typing import Any, AsyncIterator
 from pydantic import BaseModel
 
 from openagents.interfaces.session import (
+    _ARTIFACTS_KEY,
+    _CHECKPOINTS_KEY,
+    _TRANSCRIPT_KEY,
     SESSION_ARTIFACTS,
     SESSION_CHECKPOINTS,
     SESSION_MANAGE,
@@ -22,9 +25,6 @@ from openagents.interfaces.session import (
     SessionArtifact,
     SessionCheckpoint,
     SessionManagerPlugin,
-    _ARTIFACTS_KEY,
-    _CHECKPOINTS_KEY,
-    _TRANSCRIPT_KEY,
 )
 
 logger = logging.getLogger("openagents.session.jsonl_file")

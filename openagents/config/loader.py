@@ -10,8 +10,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .schema import AppConfig
 from ..errors.exceptions import ConfigLoadError, ConfigValidationError
+from .schema import AppConfig
 
 
 def _expand_env_vars(text: str, *, source: Path | None = None) -> str:

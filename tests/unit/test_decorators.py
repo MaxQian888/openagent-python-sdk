@@ -2,40 +2,38 @@
 
 import warnings
 
-import pytest
-
 from openagents.decorators import (
-    tool,
-    pattern,
-    memory,
-    runtime,
-    session,
-    event_bus,
-    tool_executor,
     context_assembler,
-    get_tool,
-    get_pattern,
+    get_context_assembler,
+    get_event_bus,
     get_memory,
+    get_pattern,
     get_runtime,
     get_session,
-    get_event_bus,
+    get_tool,
     get_tool_executor,
-    get_context_assembler,
-    list_tools,
-    list_patterns,
+    list_context_assemblers,
+    list_event_buses,
     list_memories,
+    list_patterns,
     list_runtimes,
     list_sessions,
-    list_event_buses,
     list_tool_executors,
-    list_context_assemblers,
+    list_tools,
+    memory,
+    pattern,
+    runtime,
+    session,
+    tool,
+    tool_executor,
 )
 
 
 def test_tool_decorator_without_args():
     """Test @tool decorator without arguments."""
     # Import inside function to ensure correct module context
-    from openagents.decorators import tool as tool_decorator, get_tool as get_tool_func
+    from openagents.decorators import get_tool as get_tool_func
+    from openagents.decorators import tool as tool_decorator
 
     @tool_decorator
     async def my_tool(params, context):

@@ -61,7 +61,10 @@ class FinalPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -89,7 +92,10 @@ class DepsEchoPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -117,7 +123,10 @@ class SlowFinalPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -176,7 +185,10 @@ class NonDictActionPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -204,7 +216,10 @@ class UnknownTypePattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -232,7 +247,10 @@ class MissingToolCallFieldPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -260,7 +278,10 @@ class InvalidToolCallParamsPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -289,7 +310,10 @@ class ContinueForeverPattern:
         self._max_steps = config.get("max_steps", 4) if config else 4
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -323,7 +347,10 @@ class SlowContinuePattern:
         self._step_timeout_ms = config.get("step_timeout_ms", 1000) if config else 1000
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -363,7 +390,10 @@ class FailOnceThenFinalPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -393,7 +423,10 @@ class PromptAwarePattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -424,7 +457,10 @@ class ArtifactPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -458,7 +494,10 @@ class ToolCallingPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -489,7 +528,10 @@ class TwoToolCallsPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -522,7 +564,10 @@ class ContextAwarePattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,
@@ -556,7 +601,10 @@ class ConfigurableToolPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         from openagents.interfaces.pattern import ExecutionContext
         self.context = ExecutionContext(
             agent_id=agent_id,

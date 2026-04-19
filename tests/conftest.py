@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import shutil
 import sys
-from uuid import uuid4
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
-
 
 SKILL_SRC = (
     Path(__file__).resolve().parents[1]

@@ -2,10 +2,12 @@
 
 import pytest
 
-from openagents.config.schema import LLMOptions
+from openagents.config.schema import LLMOptions, LLMRetryOptions
 from openagents.errors.exceptions import ConfigValidationError
-from openagents.llm.registry import create_llm_client
+from openagents.llm.providers.anthropic import AnthropicClient
 from openagents.llm.providers.mock import MockLLMClient
+from openagents.llm.providers.openai_compatible import OpenAICompatibleClient
+from openagents.llm.registry import create_llm_client
 
 
 def test_create_llm_client_mock():
@@ -91,3 +93,169 @@ def test_mock_client_pricing_overridable():
 
     # count_tokens returns deterministic len//4
     assert client.count_tokens("xxxx" * 4) == 4
+
+
+# ---------------------------------------------------------------------------
+# Phase E: retry / extra_headers / reasoning_model threading
+# ---------------------------------------------------------------------------
+
+
+def test_registry_threads_retry_into_anthropic_client():
+    opts = LLMOptions(
+        provider="anthropic",
+        api_base="https://api.anthropic.com",
+        model="claude-test",
+        retry=LLMRetryOptions(max_attempts=5, initial_backoff_ms=250),
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, AnthropicClient)
+    assert client._retry_policy.max_attempts == 5
+    assert client._retry_policy.initial_backoff_ms == 250
+    # Anthropic extras (529) still present
+    assert 529 in client._retry_policy.retryable_status
+
+
+def test_registry_threads_extra_headers_into_anthropic_client():
+    opts = LLMOptions(
+        provider="anthropic",
+        api_base="https://api.anthropic.com",
+        model="claude-test",
+        extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, AnthropicClient)
+    assert client._extra_headers == {"anthropic-beta": "prompt-caching-2024-07-31"}
+
+
+def test_registry_threads_retry_into_openai_client():
+    opts = LLMOptions(
+        provider="openai_compatible",
+        api_base="https://api.openai.com/v1",
+        model="gpt-4o",
+        retry=LLMRetryOptions(max_attempts=2),
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, OpenAICompatibleClient)
+    assert client._retry_policy.max_attempts == 2
+
+
+def test_registry_threads_reasoning_model_opt_in_into_openai_client():
+    opts = LLMOptions(
+        provider="openai_compatible",
+        api_base="https://api.openai.com/v1",
+        model="custom-reasoner",
+        reasoning_model=True,
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, OpenAICompatibleClient)
+    assert client._reasoning_model_opt_in is True
+
+
+def test_registry_threads_extra_headers_into_openai_client():
+    opts = LLMOptions(
+        provider="openai_compatible",
+        api_base="https://api.openai.com/v1",
+        model="gpt-4o",
+        extra_headers={"X-Trace": "on"},
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, OpenAICompatibleClient)
+    assert client._extra_headers == {"X-Trace": "on"}
+
+
+def test_registry_threads_seed_top_p_parallel_tool_calls_from_extras():
+    opts = LLMOptions.model_validate(
+        {
+            "provider": "openai_compatible",
+            "api_base": "https://api.openai.com/v1",
+            "model": "gpt-4o",
+            "seed": 42,
+            "top_p": 0.9,
+            "parallel_tool_calls": False,
+        }
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, OpenAICompatibleClient)
+    assert client._default_seed == 42
+    assert client._default_top_p == 0.9
+    assert client._default_parallel_tool_calls is False
+
+
+def test_registry_omitting_new_fields_leaves_defaults_unchanged():
+    """Registry behavior for a config without new fields must be byte-identical."""
+    opts = LLMOptions(
+        provider="anthropic",
+        api_base="https://api.anthropic.com",
+        model="claude-test",
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, AnthropicClient)
+    # Retry policy gets defaults (Anthropic includes 529 in its retryable set)
+    assert client._retry_policy.max_attempts == 3
+    assert client._retry_policy.initial_backoff_ms == 500
+    assert client._extra_headers == {}
+
+
+def test_registry_openai_omitting_new_fields_leaves_defaults_unchanged():
+    opts = LLMOptions(
+        provider="openai_compatible",
+        api_base="https://api.openai.com/v1",
+        model="gpt-4o",
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, OpenAICompatibleClient)
+    assert client._retry_policy.max_attempts == 3
+    assert client._extra_headers == {}
+    assert client._reasoning_model_opt_in is None
+    assert client._default_seed is None
+    assert client._default_top_p is None
+    assert client._default_parallel_tool_calls is None
+
+
+def test_registry_ignores_non_int_seed():
+    opts = LLMOptions.model_validate(
+        {
+            "provider": "openai_compatible",
+            "api_base": "https://api.openai.com/v1",
+            "model": "gpt-4o",
+            "seed": "not-an-int",
+        }
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, OpenAICompatibleClient)
+    # Non-int seed silently ignored to avoid corrupting the outgoing payload
+    assert client._default_seed is None
+
+
+def test_registry_threads_openai_api_style_explicit():
+    opts = LLMOptions(
+        provider="openai_compatible",
+        api_base="https://api.openai.com/v1",
+        model="gpt-5",
+        openai_api_style="responses",
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, OpenAICompatibleClient)
+    assert client.api_style == "responses"
+
+
+def test_registry_autodetects_responses_style_from_api_base():
+    opts = LLMOptions(
+        provider="openai_compatible",
+        api_base="https://api.openai.com/v1/responses",
+        model="gpt-5",
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, OpenAICompatibleClient)
+    assert client.api_style == "responses"
+
+
+def test_registry_defaults_openai_api_style_to_chat_completions():
+    opts = LLMOptions(
+        provider="openai_compatible",
+        api_base="https://api.openai.com/v1",
+        model="gpt-4o",
+    )
+    client = create_llm_client(opts)
+    assert isinstance(client, OpenAICompatibleClient)
+    assert client.api_style == "chat_completions"

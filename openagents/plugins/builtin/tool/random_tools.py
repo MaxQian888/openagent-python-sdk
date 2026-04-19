@@ -6,8 +6,8 @@ import random
 import uuid
 from typing import Any
 
-from openagents.interfaces.tool import ToolPlugin
 from openagents.interfaces.capabilities import TOOL_INVOKE
+from openagents.interfaces.tool import ToolPlugin
 
 
 class RandomIntTool(ToolPlugin):

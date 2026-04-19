@@ -1,0 +1,7 @@
+{
+  "name": "deck-ai-agent-20260418-185043",
+  "private": true,
+  "dependencies": {
+    "pptxgenjs": "^3.12.0"
+  }
+}

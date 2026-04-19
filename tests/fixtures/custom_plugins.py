@@ -3,10 +3,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from openagents.interfaces.context import ContextAssemblyResult
-from openagents.interfaces.followup import FollowupResolution
-from openagents.interfaces.run_context import RunContext
-from openagents.interfaces.response_repair import ResponseRepairDecision
 from openagents.interfaces.capabilities import (
     MEMORY_INJECT,
     PATTERN_EXECUTE,
@@ -17,6 +13,10 @@ from openagents.interfaces.capabilities import (
     SKILL_TOOLS,
     TOOL_INVOKE,
 )
+from openagents.interfaces.context import ContextAssemblyResult
+from openagents.interfaces.followup import FollowupResolution
+from openagents.interfaces.response_repair import ResponseRepairDecision
+from openagents.interfaces.run_context import RunContext
 
 
 class CustomMemory:
@@ -34,7 +34,10 @@ class CustomPattern:
         self.capabilities = {PATTERN_EXECUTE, PATTERN_REACT}
         self.context = None
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         """Setup pattern with runtime data."""
         self.context = RunContext[Any](
             agent_id=agent_id,
@@ -103,7 +106,10 @@ class BadPatternNoCapability:
         self.config = config or {}
         self.capabilities = set()
 
-    async def setup(self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any], tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any) -> None:
+    async def setup(
+        self, agent_id: str, session_id: str, input_text: str, state: dict[str, Any],
+        tools: dict[str, Any], llm_client: Any, llm_options: Any, event_bus: Any,
+    ) -> None:
         pass
 
     async def react(self) -> dict[str, Any]:

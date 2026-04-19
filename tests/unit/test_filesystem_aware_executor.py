@@ -1,6 +1,7 @@
 import pytest
-from openagents.plugins.builtin.tool_executor.filesystem_aware import FilesystemAwareExecutor
+
 from openagents.interfaces.tool import ToolExecutionRequest, ToolExecutionSpec
+from openagents.plugins.builtin.tool_executor.filesystem_aware import FilesystemAwareExecutor
 
 
 class _MockTool:

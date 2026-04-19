@@ -13,7 +13,6 @@ from openagents.interfaces.tool import (
     ToolExecutionRequest,
 )
 
-
 _PRIVATE_PREFIXES = ("127.", "10.", "192.168.")
 _PRIVATE_EXACT = {"localhost", "::1"}
 
@@ -78,12 +77,16 @@ class NetworkAllowlistExecutionPolicy:
             return PolicyDecision(allowed=True, metadata={"policy": "network_allowlist", "skipped": True})
         url = (request.params or {}).get("url", "")
         if not isinstance(url, str) or not url.strip():
-            return PolicyDecision(allowed=False, reason="unparseable URL: empty", metadata={"policy": "network_allowlist"})
+            return PolicyDecision(
+                allowed=False, reason="unparseable URL: empty", metadata={"policy": "network_allowlist"}
+            )
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
         scheme = (parsed.scheme or "").lower()
         if not host:
-            return PolicyDecision(allowed=False, reason="unparseable URL: missing host", metadata={"policy": "network_allowlist"})
+            return PolicyDecision(
+                allowed=False, reason="unparseable URL: missing host", metadata={"policy": "network_allowlist"}
+            )
         meta = {"policy": "network_allowlist", "host": host, "scheme": scheme}
         if scheme not in self._allow_schemes:
             return PolicyDecision(allowed=False, reason=f"scheme '{scheme}' not allowed", metadata=meta)

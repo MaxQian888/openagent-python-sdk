@@ -14,6 +14,9 @@ from pydantic import BaseModel
 
 from openagents.errors.exceptions import PluginLoadError, SessionError
 from openagents.interfaces.session import (
+    _ARTIFACTS_KEY,
+    _CHECKPOINTS_KEY,
+    _TRANSCRIPT_KEY,
     SESSION_ARTIFACTS,
     SESSION_CHECKPOINTS,
     SESSION_MANAGE,
@@ -22,9 +25,6 @@ from openagents.interfaces.session import (
     SessionArtifact,
     SessionCheckpoint,
     SessionManagerPlugin,
-    _ARTIFACTS_KEY,
-    _CHECKPOINTS_KEY,
-    _TRANSCRIPT_KEY,
 )
 from openagents.interfaces.typed_config import TypedConfigPluginMixin
 

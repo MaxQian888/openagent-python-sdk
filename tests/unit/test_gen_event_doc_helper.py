@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from openagents.tools.gen_event_doc import main, render_doc, write_doc
 
 

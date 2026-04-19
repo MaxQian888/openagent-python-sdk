@@ -1,7 +1,6 @@
 import pytest
-from openagents.interfaces.tool import (
-    ToolExecutorPlugin, ToolExecutionRequest, ToolExecutionResult, PolicyDecision
-)
+
+from openagents.interfaces.tool import PolicyDecision, ToolExecutionRequest, ToolExecutorPlugin
 
 
 class _MinimalTool:

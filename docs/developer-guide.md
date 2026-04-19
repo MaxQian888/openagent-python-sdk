@@ -485,12 +485,23 @@ queue、approval、orchestration、UI workflow 应该在 kernel 之上。
 
 这样可以避免 seam 越抽越多、kernel 越做越胖。
 
-## 14. 下一步看什么
+## 14. 内置 CLI
+
+随 SDK 一并安装的 `openagents` 命令覆盖了"脚手架 → 运行 → 迭代 → 发布"完整
+开发闭环，包括 `init`、`run`、`chat`、`dev`、`new plugin`、`doctor`、
+`config show`、`replay`、`completion`、`version` 等 13 个子命令。实现保持
+kernel-clean：CLI 只通过 `Runtime.from_config` / `Runtime.run_detailed` /
+`Runtime.reload` 等**公开 API** 消费 kernel，不引入新 seam。
+
+细节见 [内置 CLI 参考](cli.md)（英文：[cli.en.md](cli.en.md)）。
+
+## 15. 下一步看什么
 
 - [Seam 与扩展点](seams-and-extension-points.md)
 - [配置参考](configuration.md)
 - [插件开发](plugin-development.md)
 - [API 参考](api-reference.md)
+- [内置 CLI 参考](cli.md)
 - [示例说明](examples.md)
 - [流式 API](stream-api.md)
 - [可观测性](observability.md)

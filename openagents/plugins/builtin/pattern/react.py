@@ -287,7 +287,10 @@ class ReActPattern(TypedConfigPluginMixin, PatternPlugin):
 
         return {
             "type": "final",
-            "content": f"{self._echo_prefix()}: {raw_input}\n\n[Conversation History ({history_count} items)]:\n{history_text}",
+            "content": (
+                f"{self._echo_prefix()}: {raw_input}\n\n"
+                f"[Conversation History ({history_count} items)]:\n{history_text}"
+            ),
         }
 
     async def execute(self) -> Any:

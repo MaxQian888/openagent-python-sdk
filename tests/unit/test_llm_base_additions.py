@@ -4,6 +4,7 @@ import pytest
 
 from openagents.config.schema import LLMOptions, LLMPricing
 from openagents.llm.base import (
+    LLMChunk,
     LLMClient,
     LLMCostBreakdown,
     compute_cost,
@@ -66,3 +67,22 @@ def test_llm_options_pricing_parses():
     assert options.pricing.input == 1.0
     assert options.pricing.output == 2.0
     assert options.pricing.cached_read is None
+
+
+def test_llm_chunk_error_type_defaults_to_none():
+    chunk = LLMChunk(type="content_block_delta", delta={"type": "text_delta", "text": "hi"})
+    assert chunk.error_type is None
+    assert chunk.error is None
+
+
+def test_llm_chunk_error_type_roundtrips_every_classifier():
+    for classifier in ("rate_limit", "connection", "response", "unknown"):
+        chunk = LLMChunk(type="error", error="boom", error_type=classifier)
+        assert chunk.error_type == classifier
+        assert chunk.error == "boom"
+
+
+def test_llm_chunk_error_without_classifier_is_unknown_or_none():
+    """An error chunk may have error_type=None when the cause is uncategorized."""
+    chunk = LLMChunk(type="error", error="boom")
+    assert chunk.error_type is None

@@ -11,7 +11,6 @@ from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK
 from openagents.interfaces.memory import MemoryPlugin
 from openagents.plugins.builtin.memory.chain import ChainMemory
 
-
 _LOG: list[str] = []
 
 

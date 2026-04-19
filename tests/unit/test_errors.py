@@ -5,8 +5,17 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pytest
+
 import openagents.errors as errors_pkg
 import openagents.errors.exceptions as errors_mod
+from openagents.errors.exceptions import (
+    BudgetExhausted,
+    ExecutionError,
+    LLMError,
+    ModelRetryError,
+    OutputValidationError,
+)
 
 
 def test_openagents_error_with_context_returns_typed_instance():
@@ -33,17 +42,6 @@ def test_new_error_types_are_importable_from_package_surface():
     assert issubclass(plugin_capability_error, errors_mod.OpenAgentsError)
     assert issubclass(agent_not_found_error, errors_mod.OpenAgentsError)
     assert issubclass(output_validation_error, errors_mod.OpenAgentsError)
-
-
-import pytest
-
-from openagents.errors.exceptions import (
-    BudgetExhausted,
-    ExecutionError,
-    LLMError,
-    ModelRetryError,
-    OutputValidationError,
-)
 
 
 def test_output_validation_error_is_execution_error():

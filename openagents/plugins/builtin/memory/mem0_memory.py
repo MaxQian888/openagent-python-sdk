@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from openagents.interfaces.memory import MemoryPlugin
 from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK
+from openagents.interfaces.memory import MemoryPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ class Mem0Memory(MemoryPlugin):
             # mem0 not installed
             context.memory_view["mem0_history"] = []
             context.memory_view["history"] = []
-        except Exception as e:
+        except Exception:
             # On any error, fallback to empty
             context.memory_view["mem0_history"] = []
             context.memory_view["history"] = []

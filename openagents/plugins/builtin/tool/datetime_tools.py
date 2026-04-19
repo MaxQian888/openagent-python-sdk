@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, timezone
 from typing import Any
 
-from openagents.interfaces.tool import ToolPlugin
 from openagents.interfaces.capabilities import TOOL_INVOKE
+from openagents.interfaces.tool import ToolPlugin
 
 
 class CurrentTimeTool(ToolPlugin):
@@ -35,7 +34,7 @@ class CurrentTimeTool(ToolPlugin):
                 "formatted": dt.strftime("%Y-%m-%d %H:%M:%S"),
                 "timezone": str(dt.tzinfo),
             }
-        except Exception as e:
+        except Exception:
             # Fallback to UTC
             dt = datetime.now(timezone.utc)
             return {
@@ -93,7 +92,8 @@ class DateDiffTool(ToolPlugin):
     """Calculate difference between two dates.
 
     What: parse two dates and report the absolute difference in days/hours/minutes/seconds.
-    Usage: ``{"id": "date_diff", "type": "date_diff"}``; invoke with ``{"date1": "...", "date2": "...", "unit": "days"}``.
+    Usage: ``{"id": "date_diff", "type": "date_diff"}``; invoke with
+    ``{"date1": "...", "date2": "...", "unit": "days"}``.
     Depends on: stdlib ``datetime``.
     """
 

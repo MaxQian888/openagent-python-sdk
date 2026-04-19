@@ -10,8 +10,6 @@ time so the pattern can pick up the queued correction via
 
 from __future__ import annotations
 
-import json
-
 import pytest
 from pydantic import BaseModel
 

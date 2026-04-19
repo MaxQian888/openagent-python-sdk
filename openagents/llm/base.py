@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator, Literal
 
+if TYPE_CHECKING:
+    from openagents.config.schema import LLMPricing
 
 logger = logging.getLogger("openagents.llm")
 
@@ -89,14 +91,25 @@ class LLMResponse:
     raw: dict[str, Any] | list[Any] | None = None
 
 
+LLMChunkErrorType = Literal["rate_limit", "connection", "response", "unknown"]
+
+
 @dataclass
 class LLMChunk:
-    """Streaming chunk from LLM."""
+    """Streaming chunk from LLM.
+
+    ``error_type`` classifies streaming failures into the same buckets as the
+    non-streaming typed errors (`LLMRateLimitError`, `LLMConnectionError`,
+    `LLMResponseError`). It is ``None`` on non-error chunks and ``None`` on
+    error chunks whose underlying cause could not be classified (the message
+    still lands in ``error``).
+    """
 
     type: str  # "content_block_delta", "message_stop", "error", ...
     delta: dict[str, Any] | str | None = None
     content: dict[str, Any] | None = None
     error: str | None = None
+    error_type: LLMChunkErrorType | None = None
     usage: LLMUsage | None = None
 
 

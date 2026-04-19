@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from openagents.errors.exceptions import (
     BudgetExhausted,
     ModelRetryError,

@@ -35,7 +35,11 @@ _ARCHETYPES: dict[str, dict[str, Any]] = {
         "tool_executor": {"type": "safe", "config": {"default_timeout_ms": 30000}},
         "tools": [_tool("read_file"), _tool("write_file"), _tool("list_files"), _tool("grep_files"), _tool("ripgrep")],
         "runtime": {"max_steps": 8, "step_timeout_ms": 30000, "session_queue_size": 1000, "event_queue_size": 2000},
-        "handoff_contract": {"expected_input": "task packet", "expected_output": "patch or implementation note", "artifact_format": "markdown"},
+        "handoff_contract": {
+            "expected_input": "task packet",
+            "expected_output": "patch or implementation note",
+            "artifact_format": "markdown",
+        },
         "integration_hints": {"preferred_position": "middle", "notes": ["Pair with reviewer for validation."]},
     },
     "reviewer": {
@@ -47,10 +51,20 @@ _ARCHETYPES: dict[str, dict[str, Any]] = {
         "pattern": {"type": "react", "config": {"max_steps": 6}},
         "llm": {"provider": "mock", "temperature": 0.0},
         "tool_executor": {"type": "safe", "config": {"default_timeout_ms": 30000}},
-        "tools": [_tool("read_file"), _tool("list_files"), _tool("grep_files"), _tool("ripgrep"), _tool("search", "builtin_search")],
+        "tools": [
+            _tool("read_file"), _tool("list_files"), _tool("grep_files"), _tool("ripgrep"),
+            _tool("search", "builtin_search"),
+        ],
         "runtime": {"max_steps": 6, "step_timeout_ms": 30000, "session_queue_size": 1000, "event_queue_size": 2000},
-        "handoff_contract": {"expected_input": "patch or diff", "expected_output": "findings", "artifact_format": "markdown"},
-        "integration_hints": {"preferred_position": "downstream", "notes": ["Feed reviewer output back to the main agent or coder."]},
+        "handoff_contract": {
+            "expected_input": "patch or diff",
+            "expected_output": "findings",
+            "artifact_format": "markdown",
+        },
+        "integration_hints": {
+            "preferred_position": "downstream",
+            "notes": ["Feed reviewer output back to the main agent or coder."],
+        },
     },
     "researcher": {
         "agent_name": "Research Agent",
@@ -63,8 +77,15 @@ _ARCHETYPES: dict[str, dict[str, Any]] = {
         "tool_executor": {"type": "safe", "config": {"default_timeout_ms": 30000}},
         "tools": [_tool("search", "builtin_search"), _tool("http_request"), _tool("url_parse"), _tool("query_param")],
         "runtime": {"max_steps": 8, "step_timeout_ms": 30000, "session_queue_size": 1000, "event_queue_size": 2000},
-        "handoff_contract": {"expected_input": "research brief", "expected_output": "evidence summary", "artifact_format": "markdown"},
-        "integration_hints": {"preferred_position": "upstream", "notes": ["Use to prepare context for planner or reviewer agents."]},
+        "handoff_contract": {
+            "expected_input": "research brief",
+            "expected_output": "evidence summary",
+            "artifact_format": "markdown",
+        },
+        "integration_hints": {
+            "preferred_position": "upstream",
+            "notes": ["Use to prepare context for planner or reviewer agents."],
+        },
     },
 }
 

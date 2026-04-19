@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from openagent_agent_builder.builder import build_openagent_skill_output
 from openagent_agent_builder.models import OpenAgentSkillInput
 

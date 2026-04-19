@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import json
-import sys
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
 
 import openagents.llm.registry as llm_registry
-from openagents.llm.base import LLMClient
-from openagents.interfaces.runtime import RunRequest
-from openagents.runtime.runtime import Runtime
-
 from examples.production_coding_agent.app.benchmark import run_benchmark
+from openagents.interfaces.runtime import RunRequest
+from openagents.llm.base import LLMClient
+from openagents.runtime.runtime import Runtime
 
 
 class _DeterministicCodingLLM(LLMClient):

@@ -52,7 +52,10 @@ async def main() -> None:
     second = await runtime.run(
         agent_id="production-coding-agent",
         session_id=session_id,
-        input_text="what tools did you just call? please continue developing this project based on the results of the tool calls.",
+        input_text=(
+            "what tools did you just call? please continue developing this project"
+            " based on the results of the tool calls."
+        ),
     )
     print("RUN 2:")
     print(second)

@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from openagents.config.loader import load_config_dict
-from openagents.interfaces.runtime import RunRequest
 from openagents.interfaces.session import SessionArtifact
 from openagents.runtime.runtime import Runtime
 

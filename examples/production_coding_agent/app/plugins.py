@@ -15,8 +15,8 @@ from openagents.interfaces.context import ContextAssemblyResult
 from openagents.interfaces.followup import FollowupResolution
 from openagents.interfaces.memory import MemoryPlugin
 from openagents.interfaces.pattern import PatternPlugin
-from openagents.interfaces.run_context import RunContext
 from openagents.interfaces.response_repair import ResponseRepairDecision
+from openagents.interfaces.run_context import RunContext
 
 from .protocols import DeliveryEnvelope, ProjectBlueprint, TaskPlan, VerificationEnvelope
 
@@ -148,7 +148,9 @@ class CodingTaskContextAssembler:
         except OSError:
             return ""
 
-    async def assemble(self, *, request: Any, session_state: dict[str, Any], session_manager: Any) -> ContextAssemblyResult:
+    async def assemble(
+        self, *, request: Any, session_state: dict[str, Any], session_manager: Any
+    ) -> ContextAssemblyResult:
         transcript = await session_manager.load_messages(request.session_id)
         artifacts = await session_manager.list_artifacts(request.session_id)
         omitted_messages = max(0, len(transcript) - self._max_messages)
@@ -255,16 +257,48 @@ class ProductionCodingPattern(PatternPlugin):
         verification = self._build_verification(plan, inspection, delivery)
         outputs_root = Path(packet["outputs_root"])
         outputs_root.mkdir(parents=True, exist_ok=True)
-        task_brief_path = await self._write_output(outputs_root / "task-brief.json", json.dumps(plan.__dict__, ensure_ascii=False, indent=2), kind="task_plan")
-        report_path = await self._write_output(outputs_root / "delivery-report.md", self._delivery_report(plan, inspection, delivery), kind="delivery_report")
-        patch_plan_path = await self._write_output(outputs_root / "patch-plan.md", self._patch_plan(plan, inspection, delivery), kind="patch_plan")
-        verification_path = await self._write_output(outputs_root / "verification-report.md", self._verification_report(verification), kind="verification_report")
+        task_brief_path = await self._write_output(
+            outputs_root / "task-brief.json",
+            json.dumps(plan.__dict__, ensure_ascii=False, indent=2),
+            kind="task_plan",
+        )
+        report_path = await self._write_output(
+            outputs_root / "delivery-report.md",
+            self._delivery_report(plan, inspection, delivery),
+            kind="delivery_report",
+        )
+        patch_plan_path = await self._write_output(
+            outputs_root / "patch-plan.md",
+            self._patch_plan(plan, inspection, delivery),
+            kind="patch_plan",
+        )
+        verification_path = await self._write_output(
+            outputs_root / "verification-report.md",
+            self._verification_report(verification),
+            kind="verification_report",
+        )
         matched_files = [item.get("display_path", item["path"]) for item in inspection["read_results"]]
         entries = list(ctx.state.get("coding_journal", []))
-        entries.append({"timestamp": _now_iso(), "objective": plan.objective, "summary": delivery.summary, "matched_files": matched_files, "artifacts": [task_brief_path, report_path, patch_plan_path, verification_path]})
+        artifact_paths = [task_brief_path, report_path, patch_plan_path, verification_path]
+        entries.append({
+            "timestamp": _now_iso(),
+            "objective": plan.objective,
+            "summary": delivery.summary,
+            "matched_files": matched_files,
+            "artifacts": artifact_paths,
+        })
         ctx.state["coding_journal"] = entries[-10:]
         ctx.state["_runtime_last_output"] = delivery.summary
-        return {"summary": delivery.summary, "root_cause": delivery.root_cause, "matched_files": matched_files, "artifacts": [task_brief_path, report_path, patch_plan_path, verification_path], "risks": delivery.risks, "next_steps": delivery.next_steps, "verification": verification.__dict__, "task_packet": packet}
+        return {
+            "summary": delivery.summary,
+            "root_cause": delivery.root_cause,
+            "matched_files": matched_files,
+            "artifacts": artifact_paths,
+            "risks": delivery.risks,
+            "next_steps": delivery.next_steps,
+            "verification": verification.__dict__,
+            "task_packet": packet,
+        }
 
     def _should_generate_project(self, input_text: str) -> bool:
         text = str(input_text or "").lower()
@@ -302,7 +336,16 @@ class ProductionCodingPattern(PatternPlugin):
 
     async def _build_plan(self, packet: dict[str, Any]) -> TaskPlan:
         fallback = self._heuristic_plan(packet)
-        payload = await self._call_json(purpose="planning", body={"user_request": self.context.input_text, "workspace_manifest": packet.get("workspace_manifest", []), "task_brief": packet.get("task_brief", ""), "recent_artifacts": packet.get("recent_artifacts", [])}, fallback=fallback.__dict__)
+        payload = await self._call_json(
+            purpose="planning",
+            body={
+                "user_request": self.context.input_text,
+                "workspace_manifest": packet.get("workspace_manifest", []),
+                "task_brief": packet.get("task_brief", ""),
+                "recent_artifacts": packet.get("recent_artifacts", []),
+            },
+            fallback=fallback.__dict__,
+        )
         return TaskPlan(
             objective=str(payload.get("objective", fallback.objective)).strip() or fallback.objective,
             search_patterns=[str(item) for item in payload.get("search_patterns", fallback.search_patterns)[:3]],
@@ -319,7 +362,9 @@ class ProductionCodingPattern(PatternPlugin):
             search_patterns=["config", "API_BASE_URL", "timeout"],
             target_files=[item for item in manifest if item.endswith((".py", ".md"))][:3],
             deliverables=["delivery-report.md", "patch-plan.md"],
-            success_criteria=["Find the relevant files", "Explain the likely root cause", "Produce actionable next steps"],
+            success_criteria=[
+                "Find the relevant files", "Explain the likely root cause", "Produce actionable next steps"
+            ],
             risks_to_check=["Missing validation", "Unclear ownership", "Insufficient tests"],
         )
 
@@ -341,7 +386,9 @@ class ProductionCodingPattern(PatternPlugin):
             summary=str(payload.get("summary", fallback.summary)).strip() or fallback.summary,
             goals=[str(item) for item in payload.get("goals", fallback.goals)[:6]],
             generated_files=[str(item) for item in payload.get("generated_files", fallback.generated_files)],
-            verification_commands=[str(item) for item in payload.get("verification_commands", fallback.verification_commands)],
+            verification_commands=[
+                str(item) for item in payload.get("verification_commands", fallback.verification_commands)
+            ],
         )
 
     def _heuristic_project_blueprint(self, packet: dict[str, Any]) -> ProjectBlueprint:
@@ -368,7 +415,11 @@ class ProductionCodingPattern(PatternPlugin):
         ]
         verification = ["python -m py_compile src/**/*.py", "pytest -q"]
         _ = packet
-        return ProjectBlueprint(project_name=project_name, package_name=package_name, project_type=project_type, summary=summary, goals=goals, generated_files=generated_files, verification_commands=verification)
+        return ProjectBlueprint(
+            project_name=project_name, package_name=package_name, project_type=project_type,
+            summary=summary, goals=goals, generated_files=generated_files,
+            verification_commands=verification,
+        )
 
     async def _materialize_project(self, project_root: Path, blueprint: ProjectBlueprint) -> list[str]:
         created: list[str] = []
@@ -396,13 +447,19 @@ class ProductionCodingPattern(PatternPlugin):
         matches: list[dict[str, Any]] = []
         for pattern in plan.search_patterns[:3]:
             try:
-                result = await self.call_tool(search_tool_id, {"path": workspace_root, "pattern": pattern, "case_sensitive": False})
+                result = await self.call_tool(
+                    search_tool_id, {"path": workspace_root, "pattern": pattern, "case_sensitive": False}
+                )
             except Exception:
                 if search_tool_id != "ripgrep" or "grep_files" not in ctx.tools:
                     raise
-                result = await self.call_tool("grep_files", {"path": workspace_root, "pattern": pattern, "case_sensitive": False})
+                result = await self.call_tool(
+                    "grep_files", {"path": workspace_root, "pattern": pattern, "case_sensitive": False}
+                )
             matches.extend(list(result.get("matches", []))[:8])
-        read_candidates: list[str] = [str((Path(workspace_root) / path).resolve(strict=False)) for path in plan.target_files]
+        read_candidates: list[str] = [
+            str((Path(workspace_root) / path).resolve(strict=False)) for path in plan.target_files
+        ]
         for item in matches:
             path = item.get("file")
             if isinstance(path, str) and path:
@@ -417,17 +474,39 @@ class ProductionCodingPattern(PatternPlugin):
                 display_path = resolved.relative_to(workspace_path).as_posix()
             except ValueError:
                 display_path = str(resolved)
-            read_results.append({"path": result["path"], "content": _trim_text(result["content"], limit=1200), "size": result.get("size", 0)})
+            read_results.append({
+                "path": result["path"],
+                "content": _trim_text(result["content"], limit=1200),
+                "size": result.get("size", 0),
+            })
             read_results[-1]["display_path"] = display_path
-        return {"workspace_files": list(files_manifest.get("files", [])), "matches": matches[:12], "read_results": read_results}
+        return {
+            "workspace_files": list(files_manifest.get("files", [])),
+            "matches": matches[:12],
+            "read_results": read_results,
+        }
 
-    async def _build_delivery(self, plan: TaskPlan, inspection: dict[str, Any], packet: dict[str, Any]) -> DeliveryEnvelope:
+    async def _build_delivery(
+        self, plan: TaskPlan, inspection: dict[str, Any], packet: dict[str, Any]
+    ) -> DeliveryEnvelope:
         fallback = self._heuristic_delivery(plan, inspection)
-        payload = await self._call_json(purpose="delivery", body={"objective": plan.objective, "search_patterns": plan.search_patterns, "target_files": plan.target_files, "inspection": inspection, "task_brief": packet.get("task_brief", "")}, fallback=fallback.__dict__)
+        payload = await self._call_json(
+            purpose="delivery",
+            body={
+                "objective": plan.objective,
+                "search_patterns": plan.search_patterns,
+                "target_files": plan.target_files,
+                "inspection": inspection,
+                "task_brief": packet.get("task_brief", ""),
+            },
+            fallback=fallback.__dict__,
+        )
         return DeliveryEnvelope(
             summary=str(payload.get("summary", fallback.summary)).strip() or fallback.summary,
             root_cause=str(payload.get("root_cause", fallback.root_cause)).strip() or fallback.root_cause,
-            recommended_changes=[str(item) for item in payload.get("recommended_changes", fallback.recommended_changes)[:6]],
+            recommended_changes=[
+                str(item) for item in payload.get("recommended_changes", fallback.recommended_changes)[:6]
+            ],
             tests_to_run=[str(item) for item in payload.get("tests_to_run", fallback.tests_to_run)[:6]],
             risks=[str(item) for item in payload.get("risks", fallback.risks)[:6]],
             next_steps=[str(item) for item in payload.get("next_steps", fallback.next_steps)[:6]],
@@ -437,15 +516,26 @@ class ProductionCodingPattern(PatternPlugin):
         matched_files = [item.get("display_path", item["path"]) for item in inspection["read_results"]]
         focus = matched_files[0] if matched_files else "the inspected workspace"
         return DeliveryEnvelope(
-            summary=f"Inspected {len(matched_files)} file(s) and prepared a repository delivery report for: {plan.objective}",
-            root_cause=f"The likely implementation hotspot is {focus}. The request needs file-level validation before code changes.",
-            recommended_changes=["Tighten validation around the hotspot", "Add explicit regression coverage", "Document operational fallbacks"],
+            summary=(
+                f"Inspected {len(matched_files)} file(s) and prepared a repository delivery report"
+                f" for: {plan.objective}"
+            ),
+            root_cause=(
+                f"The likely implementation hotspot is {focus}. "
+                "The request needs file-level validation before code changes."
+            ),
+            recommended_changes=[
+                "Tighten validation around the hotspot", "Add explicit regression coverage",
+                "Document operational fallbacks",
+            ],
             tests_to_run=["pytest -q", "targeted regression tests", "manual validation of the reported scenario"],
             risks=["Hidden assumptions in adjacent files", "Missing negative-path coverage"],
             next_steps=["Review the generated report", "Apply a minimal patch", "Run focused validation"],
         )
 
-    def _build_verification(self, plan: TaskPlan, inspection: dict[str, Any], delivery: DeliveryEnvelope) -> VerificationEnvelope:
+    def _build_verification(
+        self, plan: TaskPlan, inspection: dict[str, Any], delivery: DeliveryEnvelope
+    ) -> VerificationEnvelope:
         matched_files = [item.get("display_path", item["path"]) for item in inspection["read_results"]]
         expectations = [
             "All generated delivery artifacts exist",
@@ -466,7 +556,10 @@ class ProductionCodingPattern(PatternPlugin):
         if ctx.llm_client is None:
             return fallback
         prompt = f"PURPOSE: {purpose}\nReturn JSON only.\nBODY:\n{json.dumps(body, ensure_ascii=False, indent=2)}"
-        messages = [{"role": "system", "content": self.compose_system_prompt("You are a disciplined coding-delivery planner.")}, {"role": "user", "content": prompt}]
+        messages = [
+            {"role": "system", "content": self.compose_system_prompt("You are a disciplined coding-delivery planner.")},
+            {"role": "user", "content": prompt},
+        ]
         raw = await self.call_llm(messages=messages)
         if not str(raw or "").strip():
             decision = await self.repair_empty_response(
@@ -482,18 +575,35 @@ class ProductionCodingPattern(PatternPlugin):
         return parsed if parsed is not None else fallback
 
     async def _write_output(self, path: Path, content: str, *, kind: str) -> str:
-        ctx = self.context
         await self.call_tool("write_file", {"path": str(path), "content": content, "mode": "w"})
         self.add_artifact(name=path.name, payload=content, kind=kind, metadata={"path": str(path)})
         return str(path)
 
     def _delivery_report(self, plan: TaskPlan, inspection: dict[str, Any], delivery: DeliveryEnvelope) -> str:
         files = "\n".join(f"- {item.get('display_path', item['path'])}" for item in inspection["read_results"])
-        return f"# Delivery Report\n\n## Objective\n{plan.objective}\n\n## Summary\n{delivery.summary}\n\n## Root Cause\n{delivery.root_cause}\n\n## Recommended Changes\n" + "\n".join(f"- {item}" for item in delivery.recommended_changes) + "\n\n## Tests To Run\n" + "\n".join(f"- {item}" for item in delivery.tests_to_run) + "\n\n## Risks\n" + "\n".join(f"- {item}" for item in delivery.risks) + f"\n\n## Files Inspected\n{files}\n"
+        changes = "\n".join(f"- {item}" for item in delivery.recommended_changes)
+        tests = "\n".join(f"- {item}" for item in delivery.tests_to_run)
+        risks = "\n".join(f"- {item}" for item in delivery.risks)
+        return (
+            f"# Delivery Report\n\n## Objective\n{plan.objective}\n\n"
+            f"## Summary\n{delivery.summary}\n\n"
+            f"## Root Cause\n{delivery.root_cause}\n\n"
+            f"## Recommended Changes\n{changes}\n\n"
+            f"## Tests To Run\n{tests}\n\n"
+            f"## Risks\n{risks}\n\n"
+            f"## Files Inspected\n{files}\n"
+        )
 
     def _patch_plan(self, plan: TaskPlan, inspection: dict[str, Any], delivery: DeliveryEnvelope) -> str:
         files = "\n".join(f"- {item.get('display_path', item['path'])}" for item in inspection["read_results"])
-        return f"# Patch Plan\n\nObjective: {plan.objective}\n\n## Target Files\n{files}\n\n## Proposed Change Sequence\n" + "\n".join(f"- {item}" for item in delivery.recommended_changes) + "\n\n## Validation\n" + "\n".join(f"- {item}" for item in delivery.tests_to_run) + "\n"
+        changes = "\n".join(f"- {item}" for item in delivery.recommended_changes)
+        tests = "\n".join(f"- {item}" for item in delivery.tests_to_run)
+        return (
+            f"# Patch Plan\n\nObjective: {plan.objective}\n\n"
+            f"## Target Files\n{files}\n\n"
+            f"## Proposed Change Sequence\n{changes}\n\n"
+            f"## Validation\n{tests}\n"
+        )
 
     def _verification_report(self, verification: VerificationEnvelope) -> str:
         return (

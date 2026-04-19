@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
 from typing import Any
 
 from openagents.interfaces.capabilities import TOOL_INVOKE

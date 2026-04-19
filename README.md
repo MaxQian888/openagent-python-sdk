@@ -40,11 +40,18 @@ Run the test suite:
 uv run pytest -q
 ```
 
-Run the smallest maintained example:
+Run the smallest maintained example through the built-in CLI:
 
 ```bash
-uv run python examples/quickstart/run_demo.py
+openagents run examples/quickstart/agent.json --input "hello"
+# or interactively:
+openagents chat examples/quickstart/agent.json
 ```
+
+The legacy `uv run python examples/quickstart/run_demo.py` script still
+works and is kept for reference. See [docs/cli.en.md](docs/cli.en.md)
+for the full CLI surface (`init`, `run`, `chat`, `dev`, `doctor`,
+`config show`, `new plugin`, `replay`, `completion`, `version`).
 
 ## Maintained Repo Shape
 

@@ -6,14 +6,15 @@ import ast
 import operator
 from typing import Any
 
-from openagents.interfaces.tool import ToolPlugin
 from openagents.interfaces.capabilities import TOOL_INVOKE
+from openagents.interfaces.tool import ToolPlugin
 
 
 class CalcTool(ToolPlugin):
     """Simple calculator for basic operations.
 
-    What: parse an arithmetic expression with ``ast.parse(mode='eval')`` and walk it with a small whitelist of operators (no name resolution, no calls).
+    What: parse an arithmetic expression with ``ast.parse(mode='eval')`` and walk it with
+    a small whitelist of operators (no name resolution, no calls).
     Usage: ``{"id": "calc", "type": "calc"}``; invoke with ``{"expression": "2 + 3 * 4"}``.
     Depends on: stdlib ``ast`` and ``operator``.
     """
@@ -89,7 +90,8 @@ class PercentageTool(ToolPlugin):
     """Percentage calculations.
 
     What: compute "X% of value", "value increased by X%", or "value decreased by X%".
-    Usage: ``{"id": "percent", "type": "percentage"}``; invoke with ``{"value": 200, "percent": 15, "operation": "of"}``.
+    Usage: ``{"id": "percent", "type": "percentage"}``; invoke with
+    ``{"value": 200, "percent": 15, "operation": "of"}``.
     Depends on: nothing.
     """
 

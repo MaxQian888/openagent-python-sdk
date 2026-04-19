@@ -65,7 +65,8 @@ class WriteFileTool(ToolPlugin):
     """Write content to file.
 
     What: write or append UTF-8 content to a file, creating parent directories as needed.
-    Usage: ``{"id": "write_file", "type": "write_file"}``; invoke with ``{"path": "...", "content": "...", "mode": "w"}``.
+    Usage: ``{"id": "write_file", "type": "write_file"}``; invoke with
+    ``{"path": "...", "content": "...", "mode": "w"}``.
     Depends on: local filesystem.
     """
 
@@ -98,7 +99,8 @@ class ListFilesTool(ToolPlugin):
     """List files in directory.
 
     What: glob files under a directory (optionally recursive).
-    Usage: ``{"id": "list_files", "type": "list_files"}``; invoke with ``{"path": ".", "pattern": "*", "recursive": false}``.
+    Usage: ``{"id": "list_files", "type": "list_files"}``; invoke with
+    ``{"path": ".", "pattern": "*", "recursive": false}``.
     Depends on: local filesystem.
     """
 

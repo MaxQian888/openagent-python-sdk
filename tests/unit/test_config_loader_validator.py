@@ -2,8 +2,7 @@ import json
 
 import pytest
 
-from openagents.config.loader import load_config
-from openagents.config.loader import load_config_dict
+from openagents.config.loader import load_config, load_config_dict
 from openagents.errors.exceptions import ConfigError
 
 

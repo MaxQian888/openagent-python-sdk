@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from openagent_agent_builder.archetypes import list_archetypes, resolve_archetype
 
 

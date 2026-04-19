@@ -1,16 +1,16 @@
 """Tests for Runtime core functionality."""
 
-import asyncio
+
 import pytest
 
+import openagents.llm.registry as llm_registry
 from openagents.config.loader import load_config_dict
-from openagents.config.schema import AgentDefinition
-from openagents.llm.base import LLMClient, LLMResponse, LLMUsage
+from openagents.config.schema import AgentDefinition, AppConfig
+from openagents.errors.exceptions import ConfigError
 from openagents.interfaces.runtime import RunRequest
 from openagents.interfaces.session import SessionArtifact
+from openagents.llm.base import LLMClient, LLMResponse, LLMUsage
 from openagents.runtime.runtime import Runtime
-from openagents.errors.exceptions import ConfigError
-import openagents.llm.registry as llm_registry
 
 
 def _minimal_config(agent_id: str = "test_agent") -> dict:
@@ -36,13 +36,62 @@ def _minimal_config(agent_id: str = "test_agent") -> dict:
 
 
 @pytest.mark.asyncio
-async def test_runtime_init_with_skip_plugin_load():
-    """Test Runtime initialization with backward compatibility mode."""
+async def test_runtime_init_loads_builtin_components():
+    """Runtime initialisation wires the default builtin components."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     assert runtime.event_bus is not None
     assert runtime.session_manager is not None
+    assert runtime.skills_manager is not None
+    await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_accepts_partial_appconfig():
+    """Omitting top-level runtime/session/events/skills still works."""
+    from openagents.config.schema import (
+        AgentDefinition,
+        LLMOptions,
+        MemoryRef,
+        PatternRef,
+        RuntimeOptions,
+    )
+
+    agent = AgentDefinition(
+        id="partial_agent",
+        name="Partial Agent",
+        memory=MemoryRef(impl="openagents.plugins.builtin.memory.buffer.BufferMemory", on_error="continue"),
+        pattern=PatternRef(impl="openagents.plugins.builtin.pattern.react.ReActPattern"),
+        llm=LLMOptions(provider="mock"),
+        tools=[],
+        runtime=RuntimeOptions(max_steps=3, step_timeout_ms=1000),
+    )
+    config = AppConfig(agents=[agent])  # runtime/session/events/skills all defaulted
+    runtime = Runtime(config)
+
+    result = await runtime.run_detailed(
+        request=RunRequest(agent_id="partial_agent", session_id="s1", input_text="hello")
+    )
+    assert result.stop_reason == "completed"
+    await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_run_detailed_rejects_non_runresult():
+    """RuntimePlugin.run contract: must return RunResult."""
+    config = load_config_dict(_minimal_config())
+    runtime = Runtime(config)
+
+    async def _bogus_run(**_kwargs):
+        return "not a RunResult"
+
+    runtime._runtime.run = _bogus_run  # type: ignore[method-assign]
+
+    with pytest.raises(TypeError, match="must return RunResult"):
+        await runtime.run_detailed(
+            request=RunRequest(agent_id="test_agent", session_id="s1", input_text="hello")
+        )
     await runtime.close()
 
 
@@ -50,7 +99,7 @@ async def test_runtime_init_with_skip_plugin_load():
 async def test_runtime_run_unknown_agent():
     """Test that running unknown agent raises ConfigError."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     with pytest.raises(ConfigError, match="Unknown agent id"):
         await runtime.run(agent_id="nonexistent", session_id="s1", input_text="hello")
@@ -62,7 +111,7 @@ async def test_runtime_run_unknown_agent():
 async def test_runtime_get_session_count():
     """Test session count tracking."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     assert runtime.get_session_count() == 0
 
@@ -77,7 +126,7 @@ async def test_runtime_get_session_count():
 async def test_runtime_get_plugins_for_session():
     """Test per-session plugin isolation."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     plugins1 = runtime._get_plugins_for_session("s1", "test_agent")
     plugins2 = runtime._get_plugins_for_session("s2", "test_agent")
@@ -96,7 +145,7 @@ async def test_runtime_get_plugins_for_session():
 async def test_runtime_get_plugins_unknown_agent():
     """Test that getting plugins for unknown agent raises ConfigError."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     with pytest.raises(ConfigError, match="Unknown agent id"):
         runtime._get_plugins_for_session("s1", "nonexistent")
@@ -119,7 +168,7 @@ async def test_runtime_list_agents():
             tools=[],
         )
     )
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     agents = await runtime.list_agents()
 
@@ -133,7 +182,7 @@ async def test_runtime_list_agents():
 async def test_runtime_get_agent_info():
     """Test getting agent info."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     # Get plugins first to populate session cache
     runtime._get_plugins_for_session("s1", "test_agent")
@@ -153,7 +202,7 @@ async def test_runtime_get_agent_info():
 async def test_runtime_get_agent_info_unknown():
     """Test getting info for unknown agent."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     info = await runtime.get_agent_info("nonexistent")
     assert info is None
@@ -164,7 +213,7 @@ async def test_runtime_get_agent_info_unknown():
 async def test_runtime_reload_no_config_path():
     """Test reload without config path raises error."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     with pytest.raises(ConfigError, match="Cannot reload"):
         await runtime.reload()
@@ -176,7 +225,7 @@ async def test_runtime_reload_no_config_path():
 async def test_runtime_reload_agent_unknown():
     """Test reload_agent with unknown agent raises error."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     with pytest.raises(ConfigError, match="Unknown agent id"):
         await runtime.reload_agent("nonexistent")
@@ -188,7 +237,7 @@ async def test_runtime_reload_agent_unknown():
 async def test_runtime_close_session():
     """Test closing a specific session."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     # Create sessions
     runtime._get_plugins_for_session("s1", "test_agent")
@@ -210,7 +259,7 @@ async def test_runtime_close_session():
 async def test_runtime_close():
     """Test close cleans up all resources."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     # Create sessions
     runtime._get_plugins_for_session("s1", "test_agent")
@@ -226,7 +275,7 @@ async def test_runtime_close():
 async def test_runtime_run_with_asyncio():
     """Test async run method."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     # Use await instead of run_sync
     result = await runtime.run(agent_id="test_agent", session_id="s1", input_text="hello")
@@ -241,7 +290,7 @@ async def test_runtime_run_with_asyncio():
 async def test_runtime_run_builds_request_with_deps(monkeypatch):
     """Test runtime facade threads deps into RunRequest."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
     captured: dict[str, RunRequest] = {}
     deps = {"token": "abc"}
 
@@ -268,7 +317,7 @@ async def test_runtime_run_builds_request_with_deps(monkeypatch):
 async def test_runtime_properties():
     """Test runtime properties."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     # Test that properties return expected types
     assert runtime.event_bus is not None
@@ -281,7 +330,7 @@ async def test_runtime_properties():
 async def test_runtime_multiple_sessions_isolation():
     """Test that multiple sessions are properly isolated."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     # Create multiple sessions for same agent
     p1 = runtime._get_plugins_for_session("s1", "test_agent")
@@ -302,7 +351,7 @@ async def test_runtime_multiple_sessions_isolation():
 async def test_runtime_reload_agent():
     """Test reload_agent clears plugin cache."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     # Create a session
     plugins1 = runtime._get_plugins_for_session("s1", "test_agent")
@@ -324,7 +373,7 @@ async def test_runtime_reload_agent():
 async def test_runtime_get_agent_info_no_plugins():
     """Test get_agent_info when no plugins loaded yet."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     info = await runtime.get_agent_info("test_agent")
 
@@ -339,7 +388,7 @@ async def test_runtime_get_agent_info_no_plugins():
 async def test_runtime_run_detailed_returns_structured_result():
     """Test structured runtime result path."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     result = await runtime.run_detailed(
         request=RunRequest(
@@ -361,7 +410,7 @@ async def test_runtime_run_detailed_returns_structured_result():
 async def test_session_manager_supports_artifacts_and_checkpoints():
     """Test extended session manager contract."""
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
 
     await runtime.session_manager.append_message("s1", {"role": "user", "content": "hello"})
     await runtime.session_manager.save_artifact(
@@ -422,10 +471,108 @@ class _UsageReportingClient(LLMClient):
         )
 
 
+def _preflight_agent_config(tool_impl_path: str, tool_id: str) -> AppConfig:
+    from openagents.config.schema import (
+        AgentDefinition,
+        LLMOptions,
+        MemoryRef,
+        PatternRef,
+        RuntimeOptions,
+        ToolRef,
+    )
+
+    agent = AgentDefinition(
+        id="preflight_agent",
+        name="Preflight Agent",
+        memory=MemoryRef(
+            impl="openagents.plugins.builtin.memory.buffer.BufferMemory",
+            on_error="continue",
+        ),
+        pattern=PatternRef(impl="openagents.plugins.builtin.pattern.react.ReActPattern"),
+        llm=LLMOptions(provider="mock"),
+        tools=[ToolRef(id=tool_id, impl=tool_impl_path)],
+        runtime=RuntimeOptions(max_steps=3, step_timeout_ms=1000),
+    )
+    return AppConfig(agents=[agent])
+
+
+@pytest.mark.asyncio
+async def test_preflight_failure_maps_to_failed_run_result():
+    """A tool whose preflight raises PermanentToolError turns into a
+    RunResult with stop_reason=FAILED; the pattern loop does not run."""
+    config = _preflight_agent_config(
+        "tests.fixtures.preflight_tools.FailingPreflightTool",
+        "failing_preflight_tool",
+    )
+    runtime = Runtime(config)
+
+    result = await runtime.run_detailed(
+        request=RunRequest(
+            agent_id="preflight_agent",
+            session_id="preflight-session",
+            input_text="hello",
+        )
+    )
+
+    assert result.stop_reason == "failed"
+    assert result.final_output is None
+    assert "failing_preflight_tool" in (result.error or "")
+
+    await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_preflight_runs_once_per_session_for_tool_with_override():
+    """Preflight fires once per session when the tool overrides the hook."""
+    from tests.fixtures import preflight_tools
+
+    preflight_tools.reset()
+    config = _preflight_agent_config(
+        "tests.fixtures.preflight_tools.RecordingPreflightTool",
+        "recording_preflight_tool",
+    )
+    runtime = Runtime(config)
+
+    result = await runtime.run_detailed(
+        request=RunRequest(
+            agent_id="preflight_agent",
+            session_id="noop-session",
+            input_text="hello",
+        )
+    )
+
+    assert result.stop_reason == "completed"
+    assert preflight_tools.PREFLIGHT_CALLS == ["recording_preflight_tool"]
+
+    await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_preflight_default_no_op_does_not_break_runtime():
+    """A tool without a preflight override still runs through the runtime cleanly."""
+    config = _preflight_agent_config(
+        "tests.fixtures.preflight_tools.NoOverrideTool",
+        "no_override_tool",
+    )
+    runtime = Runtime(config)
+
+    result = await runtime.run_detailed(
+        request=RunRequest(
+            agent_id="preflight_agent",
+            session_id="noop2-session",
+            input_text="hello",
+        )
+    )
+
+    assert result.stop_reason == "completed"
+
+    await runtime.close()
+
+
 @pytest.mark.asyncio
 async def test_runtime_run_detailed_accumulates_llm_usage_from_generate(monkeypatch):
     config = load_config_dict(_minimal_config())
-    runtime = Runtime(config, _skip_plugin_load=True)
+    runtime = Runtime(config)
     monkeypatch.setattr(llm_registry, "create_llm_client", lambda llm: _UsageReportingClient())
 
     result = await runtime.run_detailed(

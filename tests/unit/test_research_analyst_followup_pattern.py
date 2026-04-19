@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 
-from openagents.interfaces.followup import FollowupResolution
 from examples.research_analyst.app.followup_pattern import FollowupFirstReActPattern
 
 

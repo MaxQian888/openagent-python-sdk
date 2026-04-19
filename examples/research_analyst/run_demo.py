@@ -17,10 +17,8 @@ from pathlib import Path
 # Ensure repo root is on sys.path when run directly.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from openagents.runtime.runtime import Runtime
-
 from examples.research_analyst.app.stub_server import start_stub_server
-
+from openagents.runtime.runtime import Runtime
 
 _HERE = Path(__file__).resolve().parent
 

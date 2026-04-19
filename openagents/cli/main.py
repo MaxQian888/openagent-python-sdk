@@ -1,10 +1,20 @@
-"""Argparse-based CLI dispatcher for ``openagents``."""
+"""Argparse-based CLI dispatcher for ``openagents``.
+
+The dispatcher walks the ordered registry in
+:mod:`openagents.cli.commands` and lazy-imports each subcommand module on
+first use. Each command module exports ``add_parser(subparsers)`` to wire
+its argparse tree (setting ``func=run`` via ``set_defaults``) and
+``run(args)`` as the execution entry point.
+"""
 
 from __future__ import annotations
 
 import argparse
+import importlib
 import sys
 from typing import Sequence
+
+from openagents.cli.commands import COMMANDS, module_name_for
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -12,30 +22,39 @@ def build_parser() -> argparse.ArgumentParser:
         prog="openagents",
         description="OpenAgents SDK command-line utilities.",
     )
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="store_true",
+        help="print SDK, Python, and extras versions and exit",
+    )
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("schema", help="dump JSON/YAML schema for AppConfig or plugins")
-    sub.add_parser("validate", help="validate an agent.json without running")
-    sub.add_parser("list-plugins", help="list registered plugins per seam")
+    for name in COMMANDS:
+        module = importlib.import_module(
+            f"openagents.cli.commands.{module_name_for(name)}"
+        )
+        module.add_parser(sub)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args, extra = parser.parse_known_args(argv)
+    args = parser.parse_args(argv)
+    if getattr(args, "version", False) and not args.command:
+        # Root -V / --version: dispatch into the version subcommand with
+        # default flags so the output format stays consistent.
+        from openagents.cli.commands import version as _version
+
+        ns = argparse.Namespace(verbose=False, format="text")
+        return _version.run(ns)
     if args.command is None:
         parser.print_help(sys.stderr)
         return 1
-    if args.command == "schema":
-        from openagents.cli.schema_cmd import run as schema_run
-        return schema_run(extra)
-    if args.command == "validate":
-        from openagents.cli.validate_cmd import run as validate_run
-        return validate_run(extra)
-    if args.command == "list-plugins":
-        from openagents.cli.list_plugins_cmd import run as list_run
-        return list_run(extra)
-    print(f"unknown subcommand: {args.command}", file=sys.stderr)
-    return 1
+    func = getattr(args, "func", None)
+    if func is None:
+        print(f"unknown subcommand: {args.command}", file=sys.stderr)
+        return 1
+    return func(args)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 class ConfigWatcher:
@@ -66,9 +66,9 @@ class ConfigWatcher:
                 current_mtime = self.config_path.stat().st_mtime
                 if current_mtime > self._last_mtime:
                     self._last_mtime = current_mtime
-                    print(f"[ConfigWatcher] Config changed, reloading...")
+                    print("[ConfigWatcher] Config changed, reloading...")
                     await self.runtime.reload()
-                    print(f"[ConfigWatcher] Reload complete")
+                    print("[ConfigWatcher] Reload complete")
 
             except asyncio.CancelledError:
                 break
@@ -117,9 +117,9 @@ class HotReloadServer:
         try:
             from aiohttp import web
         except ImportError:
-            print(f"[HotReloadServer] aiohttp not available, running in CLI mode")
+            print("[HotReloadServer] aiohttp not available, running in CLI mode")
             print(f"[HotReloadServer] Config file: {self.config_path}")
-            print(f"[HotReloadServer] Hot reload enabled - edit config to trigger reload")
+            print("[HotReloadServer] Hot reload enabled - edit config to trigger reload")
             return
 
         self._web_module = web  # Store for use in handlers

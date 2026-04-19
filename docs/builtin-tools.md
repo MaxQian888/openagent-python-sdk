@@ -1019,6 +1019,9 @@
 | `server.url` | `string` | 条件必填 | HTTP/SSE 模式：服务器端点 URL |
 | `server.headers` | `object` | 否 | HTTP/SSE 模式：请求头 |
 | `tools` | `array[string]` | 否 | 暴露的工具名白名单，空列表表示暴露服务器上的全部工具 |
+| `connection_mode` | `string` | 否 | `per_call`（默认）或 `pooled`，控制会话生命周期，详见下方 |
+| `probe_on_preflight` | `bool` | 否 | 默认 `false`；开启后 `preflight()` 会尝试连接服务器并调用一次 `list_tools` |
+| `dedup_inflight` | `bool` | 否 | 默认 `true`；在 `per_call` 模式下合并同 `(tool, arguments)` 的并发调用 |
 
 **调用参数**
 
@@ -1036,11 +1039,37 @@
 }
 ```
 
+**连接模式：per_call vs pooled**
+
+- `per_call`（默认）：每次 `invoke()` 都会打开并关闭一个全新的 stdio 子进程（或 SSE 会话）。好处是 anyio 的 cancel scope 始终绑定在单次调用内，子进程崩溃不会连带取消调用方后续的 `await`。代价是重量级服务器（如 node-based tavily-mcp）每次工具调用都要付一次进程启动成本。
+- `pooled`：首次调用时打开一个长生命周期的会话，后续所有调用复用它，通过内部 `asyncio.Lock` 串行化。N 次工具调用只开一次进程。**代价**：若池内子进程异常退出，残留的 cancel scope 可能泄漏到调用方。我们通过"死会话在下一次调用时才替换（而不是在失败的那次调用里）"来缓解这种泄漏，但仍然要求 agent 运行结束后主动调用 `close()` 排空池。当 runtime 在被意外 kill 时，`atexit` 钩子会尽力排空所有活动池，避免遗留孤儿进程。
+- 何时开启 `pooled`：ReAct 等循环里会对同一个 MCP 服务器连续发起很多次工具调用时；服务器启动成本很高时。
+- 何时保留默认 `per_call`：服务器本身不稳定、经常崩溃；或者你希望每次调用都有干净的 cancel scope 边界。
+
+**预启动检查（preflight）**
+
+`McpTool.preflight()` 在每个会话的第一个 agent turn 之前由运行时调用一次，用于尽早暴露配置错误：
+
+1. 检查 `mcp` Python SDK 是否可导入（未安装时抛 `PermanentToolError`，附带 `uv sync --extra mcp` 安装提示）；
+2. 校验 `server` 配置：stdio 模式用 `shutil.which` 检查 `command` 是否在 PATH 上；HTTP/SSE 模式用 `urllib.parse` 确认 URL 格式合法；
+3. 若 `probe_on_preflight=true`，额外打开一次临时连接调用 `list_tools` 验证服务器可达性（会产生一次额外的子进程 fork，默认关闭）。
+
+preflight 失败会让 `runtime.run()` 直接返回 `stop_reason=failed` 的 `RunResult`，错误消息里会带上失败工具的 `id`，不会进入 agent 循环。
+
+**事件**
+
+MCP 工具在配置了 event bus 的 `RunContext` 下会发射以下结构化事件，payload 仅包含工具 id、服务器标识、耗时和成功与否 —— 永远不会包含参数或工具返回值：
+
+- `tool.mcp.preflight`：preflight 结束（成功或失败）。
+- `tool.mcp.connect`：会话打开时。
+- `tool.mcp.call`：每次调用完成（含 `success` 和 `duration_ms`）。
+- `tool.mcp.close`：池化会话被 `close()` 排空时。
+
 **注意事项**
 
-- 连接在首次调用时建立，后续调用复用同一连接
-- 调用 `tools` 白名单之外的工具会抛出 `ValueError`
-- MCP 服务器断开时不会自动重连；需要重新初始化工具实例
+- `per_call` 模式下，连接随每次调用打开并关闭；`pooled` 模式下首次调用建立并复用。
+- 调用 `tools` 白名单之外的工具会抛出 `ValueError`。
+- `connection_mode="pooled"` 时务必在 runtime 关停时调用 `tool.close()`（或让 runtime 的 close 级联调用）排空会话；`atexit` 只是最后的兜底。
 
 ---
 
@@ -1094,6 +1123,33 @@
 - **`mcp`**：需要 `[mcp]` extra，安装命令：`uv sync --extra mcp`。`tools` 字段为空列表时暴露服务器所有工具，建议生产环境明确指定白名单。
 - **`ripgrep`**：依赖系统中安装的 `rg` 二进制，若不可用会报错，可用 `grep_files` 作为备选。
 - **`write_file` / `delete_file`**：文件系统写操作不可撤销，建议在沙箱或限制路径下使用。
+
+---
+
+## 新增内建（0.4.0）
+
+### `shell_exec`
+
+受限 shell 命令执行工具：`asyncio.create_subprocess_exec` + allowlist + timeout。
+
+配置：
+- `cwd`: 工作目录
+- `env_passthrough`: 允许从父进程继承的环境变量白名单
+- `command_allowlist`: 允许执行的命令 argv[0] 白名单（`None` = 不限）
+- `default_timeout_ms`: 默认超时（毫秒）
+- `capture_bytes`: stdout/stderr 各自上限
+
+调用：`{"command": str | list[str], "cwd"?, "timeout_ms"?, "env"?}` → `{"exit_code", "stdout", "stderr", "timed_out", "truncated"}`。
+
+### `tavily_search`
+
+Tavily REST 搜索工具（Tavily MCP 的 fallback 路径）。API key 从 `TAVILY_API_KEY` 读取。
+
+调用：`{"query": str, "max_results"?, "search_depth"?, "include_domains"?, "exclude_domains"?}` → `{"query", "results", "search_depth"}`。
+
+### `remember_preference`
+
+与 `markdown_memory` 配套的工具：把 `{category, rule, reason}` 推入 `context.state['_pending_memory_writes']`，由 `markdown_memory.writeback` 持久化。
 
 ---
 

@@ -4,7 +4,6 @@ import types
 
 import pytest
 
-from openagents.llm.base import LLMUsage
 from openagents.llm.providers import _http_base as http_base_module
 from openagents.llm.providers.anthropic import AnthropicClient
 
@@ -80,7 +79,8 @@ async def test_complete_stream_normalizes_content_block_start_payload(monkeypatc
     records = [
         (
             b"event: content_block_start\n"
-            b'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"read"}}\n\n'
+            b'data: {"type":"content_block_start","index":0,'
+            b'"content_block":{"type":"tool_use","id":"toolu_1","name":"read"}}\n\n'
         ),
     ]
 
@@ -175,3 +175,53 @@ async def test_complete_stream_carries_usage_and_stop_reason_from_message_events
     assert chunks[3].usage.total_tokens == 14
     assert chunks[3].usage.metadata.get("cost_usd") is None
     assert chunks[3].usage.metadata.get("cost_breakdown") == {}
+
+
+@pytest.mark.asyncio
+async def test_complete_stream_preserves_thinking_block_events(monkeypatch):
+    """Thinking deltas must surface as distinct content chunks so consumers
+    can filter them — they shouldn't be silently swallowed."""
+    records = [
+        (
+            b"event: content_block_start\n"
+            b'data: {"type":"content_block_start","index":0,'
+            b'"content_block":{"type":"thinking","thinking":""}}\n\n'
+        ),
+        (
+            b"event: content_block_delta\n"
+            b'data: {"type":"content_block_delta","index":0,'
+            b'"delta":{"type":"thinking_delta","thinking":"Let me think..."}}\n\n'
+        ),
+        (
+            b"event: content_block_stop\n"
+            b'data: {"type":"content_block_stop","index":0}\n\n'
+        ),
+        b'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+    ]
+
+    fake_httpx = types.SimpleNamespace(
+        Timeout=lambda *args, **kwargs: None,
+        AsyncClient=lambda **kwargs: _FakeAsyncClient(records=records, **kwargs),
+        Limits=lambda **kwargs: None,
+    )
+    monkeypatch.setattr(http_base_module, "httpx", fake_httpx)
+
+    client = AnthropicClient(api_base="https://api.anthropic.com", model="claude-sonnet-4-6")
+
+    chunks = []
+    async for chunk in client.complete_stream(messages=[{"role": "user", "content": "hi"}]):
+        chunks.append(chunk)
+
+    types_seen = [c.type for c in chunks]
+    # The thinking lifecycle events must pass through (no silent swallow)
+    assert types_seen == [
+        "content_block_start",
+        "content_block_delta",
+        "content_block_stop",
+        "message_stop",
+    ]
+    # The start chunk's content carries the thinking-block shape
+    assert chunks[0].content["type"] == "thinking"
+    # The delta chunk carries the thinking_delta shape
+    assert chunks[1].delta["type"] == "thinking_delta"
+    assert chunks[1].delta["thinking"] == "Let me think..."

@@ -82,13 +82,21 @@
 
 ## 2. Runtime facade
 
-### `Runtime(config: AppConfig, _skip_plugin_load: bool = False, _config_path: Path | None = None)`
+### `Runtime(config: AppConfig, *, _config_path: Path | None = None)`
 
-对外的 runtime facade。内部持有：
+对外的 runtime facade。`config.agents` 至少要有一个 agent；顶层 `runtime`/`session`/`events`/`skills` 可以全部省略——pydantic schema 会把它们填成 builtin 默认引用（`default`/`in_memory`/`async`/`local`），插件加载器按统一路径解析。
+
+内部持有：
 
 - app config
-- 顶层 runtime / session / events 组件
+- 顶层 runtime / session / events / skills 组件（始终经由 loader 加载）
 - 按 session + agent 缓存的插件 bundle
+
+```python
+Runtime(AppConfig(agents=[...]))       # 只填 agents，其他 schema 补默认
+Runtime.from_dict({"agents": [...]})   # 最小 dict
+Runtime.from_config("agent.json")      # 完整 JSON
+```
 
 ### `Runtime.from_config(config_path: str | Path) -> Runtime`
 
@@ -377,6 +385,32 @@ answer: Answer = result.final_output
 - `timeout_ms: int = 30000`
 - `stream_endpoint: str | None`
 - `pricing: LLMPricing | None` — 覆盖内置价格表
+- `retry: LLMRetryOptions | None` — 传输层重试策略（默认 `None` → provider 使用内置默认：3 次，指数退避 500ms→2000ms→5000ms，自动重试 429/502/503/504 + Anthropic 529 + `httpx.ConnectError`/`ReadTimeout`）
+- `extra_headers: dict[str, str] | None` — 合入每次请求的自定义 header；用户 key 覆盖 provider 默认（如 `{"anthropic-beta": "prompt-caching-2024-07-31"}`）
+- `reasoning_model: bool | None` — 仅 `openai_compatible`：显式标记是否为推理模型（o1/o3/o4/gpt-5-thinking…）。`None` 时基于 model 名称正则自动判定。`True` 时使用 `max_completion_tokens` 并丢弃 `temperature`
+- `openai_api_style: Literal["chat_completions", "responses"] | None` — 仅 `openai_compatible`：选择 OpenAI API 风格。`None` 时根据 `api_base` 自动判定（以 `/responses` 结尾 → `"responses"`，否则 `"chat_completions"`）。Responses API (v2) 的 payload 形状完全不同：`messages` → `input` + `instructions`；`max_tokens` → `max_output_tokens`；`response_format` → `text.format`（扁平化，不再嵌套 `json_schema`）。`response.output[]` 的 `type` 为 `message`/`reasoning`/`function_call`。目前流式仅 Chat Completions 原生支持；Responses API 的 `complete_stream()` 会降级为一次性非流式调用
+- `seed` / `top_p` / `parallel_tool_calls` — 仅 `openai_compatible`（通过 `extra="allow"` 透传）；每次请求自动写入 payload
+
+### `LLMRetryOptions`
+
+- `max_attempts: int = 3`（设为 `1` 可关闭重试）
+- `initial_backoff_ms: int = 500`
+- `max_backoff_ms: int = 5000`
+- `backoff_multiplier: float = 2.0`
+- `retry_on_connection_errors: bool = True`
+- `total_budget_ms: int | None = None` — 总墙钟预算上限；预算耗尽前不再发起新 attempt
+
+### `LLMChunk`
+
+流式响应块，新增字段：
+
+- `error_type: Literal["rate_limit", "connection", "response", "unknown"] | None = None` — 非错误块恒为 `None`；错误块按 `LLMError` 子类归一化分类
+
+### Provider 行为差异摘要
+
+**Anthropic** — `content` 保留 `thinking` / `redacted_thinking` 块（不计入 `output_text`）；`system` 接受 `str` 或 `list[dict]`（后者保留块级 `cache_control`）；`tools` 与消息内容块的 `cache_control` 原样透传；`529` 归类为 `rate_limit` 并纳入重试。
+
+**OpenAI-compatible** — 推理模型（`o\d+(-.*)?` / `gpt-5-thinking*` 或 `reasoning_model=True`）使用 `max_completion_tokens` 并丢弃 `temperature`；`usage.completion_tokens_details.reasoning_tokens` 写入 `LLMUsage.metadata["reasoning_tokens"]`（不重复计入 `output_tokens`）；`finish_reason="tool_calls"` 归一化为 `stop_reason="tool_use"`。
 
 ## 8. Runtime protocol
 
@@ -742,6 +776,18 @@ without the extra raises `PluginLoadError` with an install hint.
 Install with `uv sync --extra <name>` (or `uv sync --extra all`). Each
 module is also added to `[tool.coverage.report] omit` in `pyproject.toml`
 so the 92% coverage floor stays intact when the extra is not installed.
+
+### 18.1 `McpTool` 生命周期配置（0.3.x 新增）
+
+`McpTool.Config` 除了 `server` 与 `tools` 外，还支持：
+
+- `connection_mode: "per_call" | "pooled"`（默认 `per_call`）。`per_call` 保持 anyio cancel-scope 不跨调用泄漏；`pooled` 复用长连接、N 次调用只 fork 一次子进程。
+- `probe_on_preflight: bool`（默认 `false`）。开启后 `preflight()` 会在 agent 循环启动前多开一次临时连接并 `list_tools()`。
+- `dedup_inflight: bool`（默认 `true`）。合并 `per_call` 模式下同 `(tool, arguments)` 的并发调用，减少重复子进程启动。
+
+`ToolPlugin` 新增可选钩子 `async def preflight(self, context) -> None`，默认实现为 no-op；`DefaultRuntime` 在每个 session 第一轮 agent turn 之前会依次调用。`McpTool` 重写此钩子，验证 `mcp` SDK、`shutil.which` 命令、URL 合法性，失败抛 `PermanentToolError` 由运行时翻译成 `StopReason.FAILED` 的 `RunResult`（不会进入 pattern loop）。
+
+运行时会发射 `tool.preflight`、`tool.mcp.preflight`、`tool.mcp.connect`、`tool.mcp.call`、`tool.mcp.close` 结构化事件；payload 仅携带 id / 状态 / 耗时，**不记录参数与返回值**。
 
 ## 19. 继续阅读
 

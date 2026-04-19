@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
-from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -199,7 +197,9 @@ async def test_math_and_random_tools_cover_validation_and_result_variants(monkey
 
     monkeypatch.setattr("openagents.plugins.builtin.tool.random_tools.random.randint", lambda a, b: a + b)
     monkeypatch.setattr("openagents.plugins.builtin.tool.random_tools.random.choice", lambda seq: seq[0])
-    monkeypatch.setattr("openagents.plugins.builtin.tool.random_tools.random.sample", lambda seq, count: list(seq)[:count])
+    monkeypatch.setattr(
+        "openagents.plugins.builtin.tool.random_tools.random.sample", lambda seq, count: list(seq)[:count]
+    )
     monkeypatch.setattr("openagents.plugins.builtin.tool.random_tools.uuid.uuid1", lambda: "uuid1")
     monkeypatch.setattr("openagents.plugins.builtin.tool.random_tools.uuid.uuid4", lambda: "uuid4")
 
@@ -260,7 +260,9 @@ async def test_system_and_text_tools_cover_success_and_failure_paths(monkeypatch
         ).encode("utf-8")
         return _FakeProc(stdout=payload, stderr=b"", returncode=0)
 
-    monkeypatch.setattr("openagents.plugins.builtin.tool.system_ops.asyncio.create_subprocess_shell", _create_subprocess_shell)
+    monkeypatch.setattr(
+        "openagents.plugins.builtin.tool.system_ops.asyncio.create_subprocess_shell", _create_subprocess_shell
+    )
     monkeypatch.setattr(shutil, "which", lambda name: "rg")
     monkeypatch.setattr(asyncio, "create_subprocess_exec", _create_subprocess_exec)
 

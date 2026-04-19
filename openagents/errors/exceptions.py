@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypeVar
 
-
 OpenAgentsErrorT = TypeVar("OpenAgentsErrorT", bound="OpenAgentsError")
 
 

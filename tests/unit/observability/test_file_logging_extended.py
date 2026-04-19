@@ -53,7 +53,7 @@ async def test_exclude_events_drops_matches(tmp_path: Path) -> None:
     )
     await bus.emit("llm.chunk", delta="x")
     await bus.emit("llm.succeeded", tokens=10)
-    lines = [json.loads(l) for l in log.read_text(encoding="utf-8").splitlines()]
+    lines = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
     assert len(lines) == 1
     assert lines[0]["name"] == "llm.succeeded"
 
@@ -70,7 +70,7 @@ async def test_include_events_glob(tmp_path: Path) -> None:
     )
     await bus.emit("tool.called", agent_id="a1")
     await bus.emit("llm.called", agent_id="a1")
-    lines = [json.loads(l) for l in log.read_text(encoding="utf-8").splitlines()]
+    lines = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
     assert len(lines) == 1
     assert lines[0]["name"] == "tool.called"
 
@@ -88,7 +88,7 @@ async def test_exclude_wins_over_include(tmp_path: Path) -> None:
     )
     await bus.emit("tool.called", agent_id="a1")
     await bus.emit("tool.failed", agent_id="a1")
-    lines = [json.loads(l) for l in log.read_text(encoding="utf-8").splitlines()]
+    lines = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
     assert len(lines) == 1
     assert lines[0]["name"] == "tool.called"
 

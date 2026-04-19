@@ -28,7 +28,6 @@ from openagents.plugins.builtin.execution_policy.composite import CompositePolic
 from openagents.plugins.builtin.execution_policy.filesystem import FilesystemExecutionPolicy
 from openagents.plugins.builtin.execution_policy.network import NetworkAllowlistExecutionPolicy
 from openagents.plugins.builtin.tool_executor.retry import RetryToolExecutor
-from openagents.plugins.builtin.tool_executor.safe import SafeToolExecutor
 
 
 class SandboxedResearchExecutor(ToolExecutorPlugin):

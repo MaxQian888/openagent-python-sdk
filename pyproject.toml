@@ -1,6 +1,6 @@
 [project]
 name = "io-openagent-sdk"
-version = "0.3.0"
+version = "0.4.0"
 description = "Config-as-code agent SDK"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,6 +14,8 @@ dev = [
     "coverage[toml]>=7.6.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.0",
+    "respx>=0.21.1",
     "io-openagent-sdk[rich]",
 ]
 mcp = [
@@ -41,19 +43,31 @@ tokenizers = [
 yaml = [
     "pyyaml>=6.0",
 ]
+cli = [
+    "io-openagent-sdk[rich,yaml]",
+    "questionary>=2.0.1",
+    "watchdog>=4",
+]
+pptx = [
+    "io-openagent-sdk[rich,mcp]",
+    "questionary>=2.0.1",
+    "python-dotenv>=1.0",
+    "httpx>=0.27.0",
+]
 all = [
-    "io-openagent-sdk[mcp,mem0,openai,otel,rich,sqlite,dev,tokenizers,yaml]",
+    "io-openagent-sdk[cli,mcp,mem0,openai,otel,rich,sqlite,dev,tokenizers,yaml,pptx]",
 ]
 
 [project.scripts]
 openagents = "openagents.cli.main:main"
+pptx-agent = "examples.pptx_generator.cli:main_sync"
 
 [build-system]
 requires = ["setuptools>=68.0.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["openagents*"]
+include = ["openagents*", "examples.pptx_generator*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -80,3 +94,13 @@ dev = [
     "pytest-timeout>=2.4.0",
     "tomli>=2.2.1; python_version < '3.11'",
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = [
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

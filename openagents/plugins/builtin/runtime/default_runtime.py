@@ -8,8 +8,20 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    from openagents.config.schema import AgentDefinition, AppConfig
+
 from pydantic import BaseModel
 
+from openagents.errors.exceptions import (
+    BudgetExhausted,
+    MaxStepsExceeded,
+    ModelRetryError,
+    OpenAgentsError,
+    OutputValidationError,
+    PatternError,
+    PermanentToolError,
+)
 from openagents.interfaces.capabilities import (
     MEMORY_INJECT,
     MEMORY_WRITEBACK,
@@ -18,9 +30,8 @@ from openagents.interfaces.capabilities import (
 from openagents.interfaces.context import ContextAssemblerPlugin, ContextAssemblyResult
 from openagents.interfaces.events import (
     CONTEXT_CREATED,
-    EventBusPlugin,
-    MEMORY_INJECTED,
     MEMORY_INJECT_FAILED,
+    MEMORY_INJECTED,
     MEMORY_WRITEBACK_FAILED,
     MEMORY_WRITEBACK_SUCCEEDED,
     RUN_COMPLETED,
@@ -28,26 +39,19 @@ from openagents.interfaces.events import (
     RUN_REQUESTED,
     RUN_VALIDATED,
     SESSION_ACQUIRED,
+    EventBusPlugin,
 )
 from openagents.interfaces.pattern import PatternPlugin
 from openagents.interfaces.runtime import (
     RUN_STOP_COMPLETED,
     RUN_STOP_FAILED,
     RUN_STOP_TIMEOUT,
+    RUNTIME_RUN,
     RunRequest,
     RunResult,
+    RuntimePlugin,
     RunUsage,
     StopReason,
-    RUNTIME_RUN,
-    RuntimePlugin,
-)
-from openagents.errors.exceptions import (
-    BudgetExhausted,
-    MaxStepsExceeded,
-    ModelRetryError,
-    OpenAgentsError,
-    OutputValidationError,
-    PatternError,
 )
 from openagents.interfaces.session import SessionArtifact
 from openagents.interfaces.tool import (
@@ -390,6 +394,11 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                 self._apply_runtime_budget(pattern=plugins.pattern, agent=agent)
                 bound_tools = self._bind_tools(plugins.tools, tool_executor)
 
+                await self._run_tool_preflight(
+                    tools=plugins.tools,
+                    request=request,
+                )
+
                 await self._setup_pattern(
                     pattern=plugins.pattern,
                     request=request,
@@ -668,6 +677,57 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
             tool_id: _BoundTool(tool_id=tool_id, tool=tool, executor=executor)
             for tool_id, tool in tools.items()
         }
+
+    async def _run_tool_preflight(
+        self,
+        *,
+        tools: dict[str, Any],
+        request: RunRequest,
+    ) -> None:
+        for tool_id, tool in tools.items():
+            preflight = getattr(tool, "preflight", None)
+            if not callable(preflight):
+                continue
+            started = time.perf_counter()
+            try:
+                await preflight(None)
+            except PermanentToolError as exc:
+                msg = str(exc.args[0]) if exc.args else ""
+                if f"[tool:{tool_id}]" not in msg:
+                    prefixed = PermanentToolError(
+                        f"[tool:{tool_id}] {msg}" if msg else f"[tool:{tool_id}] preflight failed",
+                        tool_name=tool_id,
+                        hint=exc.hint,
+                        docs_url=exc.docs_url,
+                    )
+                    prefixed.with_context(
+                        agent_id=request.agent_id,
+                        session_id=request.session_id,
+                        run_id=request.run_id,
+                    )
+                    propagate: PermanentToolError = prefixed
+                else:
+                    exc.tool_id = exc.tool_id or tool_id
+                    exc.with_context(
+                        agent_id=request.agent_id,
+                        session_id=request.session_id,
+                        run_id=request.run_id,
+                    )
+                    propagate = exc
+                await self._event_bus.emit(
+                    "tool.preflight",
+                    tool_id=tool_id,
+                    result="error",
+                    error=str(propagate),
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                )
+                raise propagate from exc
+            await self._event_bus.emit(
+                "tool.preflight",
+                tool_id=tool_id,
+                result="ok",
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            )
 
     def _enforce_duration_budget(self, *, request: RunRequest, started_at: float) -> None:
         budget = request.budget

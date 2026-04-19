@@ -56,8 +56,9 @@ async def test_redact_keys_applied() -> None:
     bus, console = _make_bus(redact_keys=["api_key"])
     await bus.emit("llm.called", api_key="sk-123", agent_id="a1")
     # The rendered object carries Panel with masked content; inspect via string form
-    from rich.console import Console as RichConsole
     from io import StringIO
+
+    from rich.console import Console as RichConsole
 
     buf = StringIO()
     real = RichConsole(file=buf, force_terminal=False, highlight=False)

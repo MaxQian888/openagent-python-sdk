@@ -118,7 +118,8 @@ class PlanExecutePattern(TypedConfigPluginMixin, PatternPlugin):
             "Given the user input and conversation history, create a detailed step-by-step plan.\n"
             f"CONVERSATION_HISTORY:\n{history_text}\n"
             "Return only JSON with this structure:\n"
-            '{"plan": [{"step": 1, "action": "tool_call", "tool": "tool_id", "params": {...}}, {"step": 2, "action": "final", "content": "..."}]}\n'
+            '{"plan": [{"step": 1, "action": "tool_call", "tool": "tool_id", "params": {...}},'
+            ' {"step": 2, "action": "final", "content": "..."}]}\n'
             "No markdown, no extra text."
         )
 
@@ -185,7 +186,6 @@ class PlanExecutePattern(TypedConfigPluginMixin, PatternPlugin):
 
     async def _execute_plan(self, plan: list[dict[str, Any]]) -> str:
         """Phase 2: Execute the plan step by step."""
-        ctx = self.context
         max_steps = self._max_steps()
         results = []
 

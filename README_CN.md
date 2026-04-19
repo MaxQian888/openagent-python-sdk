@@ -348,6 +348,7 @@ OpenAgents **不会** 为每一种产品问题都发一个 seam。
 
 - [examples/quickstart](examples/quickstart)
   - 第一次接触 kernel 的最小 builtin-only setup
+  - 直接运行：`openagents run examples/quickstart/agent.json --input "hello"`
 - [examples/production_coding_agent](examples/production_coding_agent)
   - production-style coding agent，展示 task packet、persistent memory、follow-up recovery、delivery artifacts，以及 app-defined protocol 如何压在 SDK 之上
 
@@ -365,7 +366,8 @@ OpenAgents **不会** 为每一种产品问题都发一个 seam。
 4. [Configuration](docs/configuration.md)
 5. [Plugin Development](docs/plugin-development.md)
 6. [API Reference](docs/api-reference.md)
-7. [Examples](docs/examples.md)
+7. [内置 CLI](docs/cli.md)
+8. [Examples](docs/examples.md)
 
 如果你更关心“如何设计协议，而不是如何跑 hello world”，建议直接从
 `Developer Guide` 和 `Seams And Extension Points` 开始看。

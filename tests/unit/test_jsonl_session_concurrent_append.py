@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from openagents.plugins.builtin.session.jsonl_file import JsonlFileSessionManager
 from openagents.interfaces.session import _TRANSCRIPT_KEY
+from openagents.plugins.builtin.session.jsonl_file import JsonlFileSessionManager
 
 
 @pytest.mark.asyncio

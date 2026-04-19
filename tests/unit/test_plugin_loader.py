@@ -129,8 +129,8 @@ def test_load_agent_plugins_explicit_tools_override_skill_tools():
 
 def test_chain_memory_combines_multiple_memories():
     """Test that chain memory combines multiple memory plugins."""
-    from openagents.plugins.loader import load_memory_plugin
     from openagents.config.schema import MemoryRef
+    from openagents.plugins.loader import load_memory_plugin
 
     ref = MemoryRef(
         type="chain",

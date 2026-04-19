@@ -119,6 +119,27 @@ class LLMPricing(BaseModel):
     cached_write: float | None = None
 
 
+class LLMRetryOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_attempts: PositiveInt = 3
+    initial_backoff_ms: PositiveInt = 500
+    max_backoff_ms: PositiveInt = 5000
+    backoff_multiplier: float = 2.0
+    retry_on_connection_errors: bool = True
+    total_budget_ms: PositiveInt | None = None
+
+    @field_validator("backoff_multiplier", mode="before")
+    @classmethod
+    def _validate_backoff_multiplier(cls, value: Any) -> float:
+        if not isinstance(value, (int, float)):
+            raise ValueError("'llm.retry.backoff_multiplier' must be a number")
+        fvalue = float(value)
+        if fvalue < 1.0:
+            raise ValueError("'llm.retry.backoff_multiplier' must be >= 1.0")
+        return fvalue
+
+
 class LLMOptions(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -131,6 +152,28 @@ class LLMOptions(BaseModel):
     timeout_ms: PositiveInt = 30000
     stream_endpoint: str | None = None
     pricing: LLMPricing | None = None
+    retry: LLMRetryOptions | None = None
+    extra_headers: dict[str, str] | None = None
+    reasoning_model: bool | None = None
+    openai_api_style: Literal["chat_completions", "responses"] | None = None
+
+    @field_validator("extra_headers", mode="before")
+    @classmethod
+    def _validate_extra_headers(cls, value: Any) -> dict[str, str] | None:
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError("'llm.extra_headers' must be an object of string->string")
+        cleaned: dict[str, str] = {}
+        for key, val in value.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError("'llm.extra_headers' keys must be non-empty strings")
+            if not isinstance(val, str):
+                raise ValueError(
+                    f"'llm.extra_headers[{key!r}]' must be a string"
+                )
+            cleaned[key] = val
+        return cleaned or None
 
     @field_validator("provider", mode="before")
     @classmethod

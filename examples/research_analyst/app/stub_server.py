@@ -8,7 +8,6 @@ from typing import AsyncIterator
 
 from aiohttp import web
 
-
 _TOPIC_A = {
     "title": "Topic A — Overview",
     "summary": "Topic A is the first sample corpus used by the research-analyst example.",

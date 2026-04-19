@@ -189,6 +189,30 @@ class EchoTool(TypedConfigPluginMixin, ToolPlugin):
 - 未知 config 键只发 warning（0.3.x 迁移安全），未来版本可能切换为 `extra='forbid'`
 - 配置验证失败时抛 `PluginConfigError` 并附带 schema hint
 
+### 可选：`preflight()` 预启动检查
+
+`ToolPlugin` 提供一个可选的 `preflight(context)` 钩子，由 `DefaultRuntime` 在每个 session 第一个 agent turn 之前调用一次。对外部依赖型工具（MCP 服务器、子进程型工具、需要 API key 校验的工具）非常有用 —— 它允许你在 LLM 实际选中工具之前就把"未安装 extra / 命令不在 PATH / URL 无效"这类配置错误暴露出来。
+
+```python
+from openagents.errors.exceptions import PermanentToolError
+
+class MyExternalTool(ToolPlugin):
+    async def preflight(self, context):
+        try:
+            import my_heavy_dep  # noqa: F401
+        except ImportError as e:
+            raise PermanentToolError(
+                f"[tool:{self.tool_name}] my_heavy_dep not installed",
+                tool_name=self.tool_name,
+                hint="uv add my-heavy-dep",
+            ) from e
+```
+
+- 默认实现是 no-op，**不要求**所有工具重写。
+- 失败时必须抛 `PermanentToolError`（不是通用 `Exception`）。运行时会把它翻译成 `stop_reason=failed` 的 `RunResult`，并在错误消息里注入失败工具的 id，agent 循环不会启动。
+- preflight 不应该做重量级副作用（例如真正启动 MCP 子进程）；需要探活的话请把探活行为作为 opt-in 配置项（MCP 内置工具的 `probe_on_preflight` 就是这个模式）。
+- 参见 `McpTool.preflight()` 作为参考实现；具体见 `docs/builtin-tools.md` 的 MCP 段落。
+
 ## 7. 自定义 Memory
 
 当你要控制 inject / writeback 行为时，写 Memory。

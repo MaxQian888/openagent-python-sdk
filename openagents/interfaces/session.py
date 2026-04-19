@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .plugin import BasePlugin
 
-
 _TRANSCRIPT_KEY = "_session_transcript"
 _ARTIFACTS_KEY = "_session_artifacts"
 _CHECKPOINTS_KEY = "_session_checkpoints"

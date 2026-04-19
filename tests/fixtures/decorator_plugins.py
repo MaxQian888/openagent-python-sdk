@@ -4,17 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from openagents import memory, pattern, tool
-from openagents import context_assembler, tool_executor
-from openagents.interfaces.context import ContextAssemblyResult
+from openagents import context_assembler, memory, pattern, tool, tool_executor
 from openagents.interfaces.capabilities import (
     MEMORY_INJECT,
     PATTERN_EXECUTE,
     PATTERN_REACT,
-    SKILL_METADATA,
-    SKILL_SYSTEM_PROMPT,
     TOOL_INVOKE,
 )
+from openagents.interfaces.context import ContextAssemblyResult
 
 
 @memory

@@ -58,7 +58,7 @@ def run_agent_with_config(
     Returns:
         Agent execution result
     """
-    runtime = Runtime(config, _skip_plugin_load=False)
+    runtime = Runtime(config)
     return runtime.run_sync(agent_id=agent_id, session_id=session_id, input_text=input_text, deps=deps)
 
 
@@ -93,7 +93,7 @@ def run_agent_detailed_with_config(
     deps: Any = None,
 ) -> RunResult:
     """Synchronous detailed run with a pre-loaded AppConfig."""
-    runtime = Runtime(config, _skip_plugin_load=False)
+    runtime = Runtime(config)
     return asyncio.run(
         runtime.run_detailed(
             request=RunRequest(

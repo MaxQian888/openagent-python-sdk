@@ -6,7 +6,6 @@ import sys
 
 import pytest
 
-
 EXPECTED: list[tuple[str, str]] = [
     ("tool_executor", "retry"),
     # execution_policy, followup_resolver, and response_repair_policy builtins

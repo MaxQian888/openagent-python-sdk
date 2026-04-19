@@ -1,0 +1,14 @@
+{
+  "name": "nova-code-2-launch",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Nova Code 2.0 launch presentation",
+  "license": "MIT",
+  "scripts": {
+    "build": "node slides/compile.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}

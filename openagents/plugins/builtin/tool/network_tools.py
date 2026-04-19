@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from openagents.interfaces.tool import ToolPlugin
 from openagents.interfaces.capabilities import TOOL_INVOKE
+from openagents.interfaces.tool import ToolPlugin
 
 
 class URLParseTool(ToolPlugin):
@@ -48,7 +47,8 @@ class URLBuildTool(ToolPlugin):
     """Build URL from components.
 
     What: assemble ``scheme://host/path?query#fragment``; minimal string concat (no encoding).
-    Usage: ``{"id": "url_build", "type": "url_build"}``; invoke with ``{"scheme": "https", "host": "...", "path": "/x"}``.
+    Usage: ``{"id": "url_build", "type": "url_build"}``; invoke with
+    ``{"scheme": "https", "host": "...", "path": "/x"}``.
     Depends on: nothing (stdlib).
     """
 

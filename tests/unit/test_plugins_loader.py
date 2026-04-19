@@ -5,15 +5,15 @@ import warnings
 import pytest
 
 from openagents.config.loader import load_config_dict
+from openagents.errors.exceptions import CapabilityError, PluginLoadError
 from openagents.plugins.loader import (
     load_agent_plugins,
-    load_runtime_components,
     load_memory_plugin,
     load_pattern_plugin,
+    load_runtime_components,
     load_skills_plugin,
     load_tool_plugin,
 )
-from openagents.errors.exceptions import CapabilityError, PluginLoadError
 
 
 def _config_with_agent(agent_override: dict = None) -> dict:

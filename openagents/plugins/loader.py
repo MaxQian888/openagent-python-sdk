@@ -15,11 +15,13 @@ from openagents.config.schema import (
     PatternRef,
     PluginRef,
     RuntimeRef,
-    SkillsRef,
     SessionRef,
+    SkillsRef,
     ToolExecutorRef,
     ToolRef,
 )
+from openagents.errors.exceptions import CapabilityError, PluginLoadError
+from openagents.errors.suggestions import near_match
 from openagents.interfaces.capabilities import (
     MEMORY_INJECT,
     MEMORY_WRITEBACK,
@@ -28,12 +30,10 @@ from openagents.interfaces.capabilities import (
     TOOL_INVOKE,
     normalize_capabilities,
 )
+from openagents.interfaces.events import EVENT_EMIT, EVENT_SUBSCRIBE
 from openagents.interfaces.runtime import RUNTIME_RUN
 from openagents.interfaces.session import SESSION_MANAGE
 from openagents.interfaces.skills import SkillsPlugin
-from openagents.interfaces.events import EVENT_EMIT, EVENT_SUBSCRIBE
-from openagents.errors.exceptions import CapabilityError, PluginLoadError
-from openagents.errors.suggestions import near_match
 from openagents.plugins.registry import get_builtin_plugin_class, list_builtin_plugins
 
 
@@ -304,25 +304,24 @@ def load_skills_plugin(ref: SkillsRef | None) -> SkillsPlugin:
 
 
 def load_runtime_components(
-    runtime_ref: RuntimeRef | None,
-    session_ref: SessionRef | None,
-    events_ref: EventBusRef | None,
+    runtime_ref: RuntimeRef,
+    session_ref: SessionRef,
+    events_ref: EventBusRef,
     skills_ref: SkillsRef | None,
 ) -> LoadedRuntimeComponents:
     """Load all runtime components from config references.
 
-    Uses defaults if refs are None.
+    ``AppConfig`` guarantees non-None defaults for runtime/session/events
+    via pydantic field defaults, so callers always pass real refs for
+    those three. ``skills_ref`` remains optional because
+    :func:`load_skills_plugin` owns its own default (``type=local``).
     Handles dependency injection between components.
     """
-    from openagents.config.schema import EventBusRef as DefaultEventBusRef
-    from openagents.config.schema import RuntimeRef as DefaultRuntimeRef
-    from openagents.config.schema import SessionRef as DefaultSessionRef
-
     # Load events first (no dependencies)
-    events = load_events_plugin(events_ref or DefaultEventBusRef(type="async"))
+    events = load_events_plugin(events_ref)
 
     # Load session (no dependencies)
-    session = load_session_plugin(session_ref or DefaultSessionRef(type="in_memory"))
+    session = load_session_plugin(session_ref)
 
     # Load host-level skills manager and inject session dependency when available
     skills = load_skills_plugin(skills_ref)
@@ -330,7 +329,7 @@ def load_runtime_components(
         skills._session_manager = session
 
     # Load runtime with injected dependencies
-    runtime = load_runtime_plugin(runtime_ref or DefaultRuntimeRef(type="default"))
+    runtime = load_runtime_plugin(runtime_ref)
 
     # Inject dependencies into runtime if it supports it
     if hasattr(runtime, "_event_bus"):

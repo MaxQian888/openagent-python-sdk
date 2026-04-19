@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 
 from openagents.interfaces.tool import PolicyDecision, ToolExecutionRequest
 
-
 _READ_TOOL_IDS = {"read_file", "list_files", "grep_files", "ripgrep"}
 _WRITE_TOOL_IDS = {"write_file", "delete_file"}
 _PATH_KEYS = ("path", "file_path", "directory", "dir_path", "cwd", "root")

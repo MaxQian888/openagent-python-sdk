@@ -14,7 +14,8 @@ class GrepFilesTool(ToolPlugin):
     """Search for pattern in files using regex.
 
     What: pure-Python recursive regex search across files under a path; first 100 matches returned.
-    Usage: ``{"id": "grep_files", "type": "grep_files"}``; invoke with ``{"pattern": "...", "path": ".", "case_sensitive": true}``.
+    Usage: ``{"id": "grep_files", "type": "grep_files"}``; invoke with
+    ``{"pattern": "...", "path": ".", "case_sensitive": true}``.
     Depends on: local filesystem; Python ``re`` module.
     """
 
@@ -156,7 +157,8 @@ class TextTransformTool(ToolPlugin):
     """Transform text (upper, lower, title, etc).
 
     What: apply one of upper/lower/title/capitalize/strip/reverse to a string.
-    Usage: ``{"id": "text_transform", "type": "text_transform"}``; invoke with ``{"text": "...", "operation": "lower"}``.
+    Usage: ``{"id": "text_transform", "type": "text_transform"}``; invoke with
+    ``{"text": "...", "operation": "lower"}``.
     Depends on: nothing (stdlib).
     """
 

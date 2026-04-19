@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Deterministic end-to-end integration tests for the research-analyst example.
 
 ReAct response shape (confirmed from openagents/plugins/builtin/pattern/react.py):
@@ -51,6 +49,8 @@ Key deviations from the task spec (documented here):
      the policy check also uses the right key.)
 """
 
+from __future__ import annotations
+
 import json
 import shutil
 from pathlib import Path
@@ -58,12 +58,10 @@ from pathlib import Path
 import pytest
 
 import openagents.llm.registry as llm_registry
-from openagents.llm.base import LLMClient
-from openagents.interfaces.runtime import RunRequest
-from openagents.runtime.runtime import Runtime
-
 from examples.research_analyst.app.stub_server import start_stub_server
-
+from openagents.interfaces.runtime import RunRequest
+from openagents.llm.base import LLMClient
+from openagents.runtime.runtime import Runtime
 
 _EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "research_analyst"
 _SESSIONS_DIR = _EXAMPLE_DIR / "sessions"

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import openagents
 from openagents.interfaces.runtime import RunRequest, RunResult
-from openagents.runtime.runtime import Runtime
 from openagents.runtime import sync as sync_module
+from openagents.runtime.runtime import Runtime
 
 
 class _FakeRuntime:
@@ -54,9 +54,8 @@ def test_run_agent_config_variants_delegate_to_runtime(monkeypatch):
     fake_config = object()
     fake = _FakeRuntime("config")
 
-    def _runtime_factory(config, _skip_plugin_load=False):
+    def _runtime_factory(config):
         assert config is fake_config
-        assert _skip_plugin_load is False
         return fake
 
     monkeypatch.setattr(sync_module, "Runtime", _runtime_factory)

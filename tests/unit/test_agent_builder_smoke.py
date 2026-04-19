@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from openagent_agent_builder.archetypes import resolve_archetype
 from openagent_agent_builder.models import OpenAgentSkillInput
 from openagent_agent_builder.render import render_agent_spec

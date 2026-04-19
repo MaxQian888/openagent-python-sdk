@@ -8,7 +8,6 @@ import pytest
 from openagents.errors.exceptions import (
     PermanentToolError,
     RetryableToolError,
-    ToolError,
     ToolTimeoutError,
 )
 from openagents.interfaces.tool import (

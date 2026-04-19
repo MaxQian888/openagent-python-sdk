@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from pathlib import Path
 from typing import Any
 
@@ -27,13 +26,18 @@ from openagents.runtime.stream_projection import project_event
 class Runtime:
     """Main runtime entrypoint.
 
-    Delegates to pluggable runtime/session/events components loaded from config.
+    Delegates to pluggable runtime/session/events/skills components loaded
+    from config. When any of the top-level ``runtime``/``session``/
+    ``events``/``skills`` fields is omitted from the config, pydantic
+    schema defaults fill in the builtin references (``default``/
+    ``in_memory``/``async``/``local``) and the plugin loader resolves them
+    uniformly — there is no separate "defaults" path.
     """
 
     def __init__(
         self,
         config: AppConfig,
-        _skip_plugin_load: bool = False,
+        *,
         _config_path: Path | None = None,
     ):
         self._config = config
@@ -42,29 +46,16 @@ class Runtime:
         self._session_plugins: dict[str, dict[str, Any]] = {}
         self._config_version: int = 0
 
-        if _skip_plugin_load:
-            from openagents.plugins.builtin.events.async_event_bus import AsyncEventBus
-            from openagents.plugins.builtin.runtime.default_runtime import DefaultRuntime
-            from openagents.plugins.builtin.session.in_memory import InMemorySessionManager
-            from openagents.plugins.builtin.skills.local import LocalSkillsManager
-
-            self._events = AsyncEventBus()
-            self._session = InMemorySessionManager()
-            self._skills = LocalSkillsManager(config={})
-            self._runtime = DefaultRuntime(config={})
-            self._runtime._event_bus = self._events
-            self._runtime._session_manager = self._session
-        else:
-            components = load_runtime_components(
-                runtime_ref=config.runtime,
-                session_ref=config.session,
-                events_ref=config.events,
-                skills_ref=config.skills,
-            )
-            self._runtime = components.runtime
-            self._session = components.session
-            self._events = components.events
-            self._skills = components.skills
+        components = load_runtime_components(
+            runtime_ref=config.runtime,
+            session_ref=config.session,
+            events_ref=config.events,
+            skills_ref=config.skills,
+        )
+        self._runtime = components.runtime
+        self._session = components.session
+        self._events = components.events
+        self._skills = components.skills
 
         self._maybe_auto_configure_logging(config)
 
@@ -182,7 +173,12 @@ class Runtime:
         return result.final_output
 
     async def run_detailed(self, *, request: RunRequest) -> RunResult:
-        """Execute an agent run and return structured runtime details."""
+        """Execute an agent run and return structured runtime details.
+
+        Delegates to ``self._runtime.run(...)``. ``RuntimePlugin.run`` must
+        accept the keyword arguments ``request``, ``app_config``,
+        ``agents_by_id``, ``agent_plugins`` and return a ``RunResult``.
+        """
         agent = self._agents_by_id.get(request.agent_id)
         if agent is None:
             raise ConfigError(
@@ -192,7 +188,18 @@ class Runtime:
 
         await self._prepare_skills_for_session(request.session_id)
         plugins = self._get_plugins_for_session(request.session_id, request.agent_id)
-        return await self._run_runtime(request=request, plugins=plugins)
+        result = await self._runtime.run(
+            request=request,
+            app_config=self._config,
+            agents_by_id=self._agents_by_id,
+            agent_plugins=plugins,
+        )
+        if not isinstance(result, RunResult):
+            raise TypeError(
+                f"RuntimePlugin.run must return RunResult, got "
+                f"{type(result).__name__} from {type(self._runtime).__name__}"
+            )
+        return result
 
     async def run_stream(self, *, request: RunRequest):
         """Execute an agent run and yield RunStreamChunk events.
@@ -298,40 +305,6 @@ class Runtime:
         return RunBudget(
             max_steps=agent.runtime.max_steps,
             max_duration_ms=agent.runtime.step_timeout_ms,
-        )
-
-    async def _run_runtime(self, *, request: RunRequest, plugins: Any) -> RunResult:
-        run_signature = inspect.signature(self._runtime.run).parameters
-        supports_request = (
-            "request" in run_signature
-            or any(param.kind is inspect.Parameter.VAR_KEYWORD for param in run_signature.values())
-        )
-        if supports_request:
-            result = await self._runtime.run(
-                request=request,
-                app_config=self._config,
-                agents_by_id=self._agents_by_id,
-                agent_plugins=plugins,
-            )
-        else:
-            result = await self._runtime.run(
-                agent_id=request.agent_id,
-                session_id=request.session_id,
-                input_text=request.input_text,
-                app_config=self._config,
-                agents_by_id=self._agents_by_id,
-                agent_plugins=plugins,
-            )
-
-        if isinstance(result, RunResult):
-            return result
-        return RunResult(
-            run_id=request.run_id,
-            final_output=result,
-            metadata={
-                "agent_id": request.agent_id,
-                "session_id": request.session_id,
-            },
         )
 
     async def reload(self) -> None:

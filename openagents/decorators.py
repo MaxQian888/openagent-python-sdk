@@ -31,9 +31,8 @@ Usage:
 
 from __future__ import annotations
 
-import functools
 import warnings
-from typing import Any, Callable, TypeVar, overload
+from typing import Any, Callable, TypeVar
 
 # Global registries for decorated plugins
 _TOOL_REGISTRY: dict[str, type] = {}
@@ -103,7 +102,9 @@ def tool(name: str | None = None, description: str = ""):
         return fn_or_cls
 
     def decorator(fn_or_cls: F) -> F:
-        tool_name = name or getattr(fn_or_cls, "__name__", fn_or_cls.__class__.__name__ if not callable(fn_or_cls) else "tool")
+        tool_name = name or getattr(
+            fn_or_cls, "__name__", fn_or_cls.__class__.__name__ if not callable(fn_or_cls) else "tool"
+        )
         _register_plugin(registry=_TOOL_REGISTRY, kind="tool", name=tool_name, plugin=fn_or_cls)
 
         # Attach metadata
@@ -201,8 +202,8 @@ def runtime(name: str | None = None):
     Usage:
         @runtime
         class MyRuntime:
-            async def run(self, agent_id, session_id, input_text, ...):
-                ...
+            async def run(self, *, request, app_config, agents_by_id, agent_plugins):
+                ...  # must return RunResult
 
         # Or with custom name:
         @runtime(name="custom")
@@ -325,14 +326,18 @@ def context_assembler(name: str | None = None):
     if isinstance(name, type):
         cls = name
         assembler_name = cls.__name__
-        _register_plugin(registry=_CONTEXT_ASSEMBLER_REGISTRY, kind="context_assembler", name=assembler_name, plugin=cls)
+        _register_plugin(
+            registry=_CONTEXT_ASSEMBLER_REGISTRY, kind="context_assembler", name=assembler_name, plugin=cls
+        )
         cls._context_assembler_name = assembler_name
         cls._is_context_assembler = True
         return cls
 
     def decorator(cls: type) -> type:
         assembler_name = name or cls.__name__
-        _register_plugin(registry=_CONTEXT_ASSEMBLER_REGISTRY, kind="context_assembler", name=assembler_name, plugin=cls)
+        _register_plugin(
+            registry=_CONTEXT_ASSEMBLER_REGISTRY, kind="context_assembler", name=assembler_name, plugin=cls
+        )
         cls._context_assembler_name = assembler_name
         cls._is_context_assembler = True
         return cls

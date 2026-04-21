@@ -18,6 +18,10 @@ from openagents.plugins.builtin.context.head_tail import HeadTailContextAssemble
 from openagents.plugins.builtin.context.importance_weighted import ImportanceWeightedContextAssembler
 from openagents.plugins.builtin.context.sliding_window import SlidingWindowContextAssembler
 from openagents.plugins.builtin.context.truncating import TruncatingContextAssembler
+from openagents.plugins.builtin.diagnostics.langfuse_plugin import LangfuseExporter
+from openagents.plugins.builtin.diagnostics.null_plugin import NullDiagnosticsPlugin
+from openagents.plugins.builtin.diagnostics.phoenix_plugin import PhoenixExporter
+from openagents.plugins.builtin.diagnostics.rich_plugin import RichDiagnosticsPlugin
 from openagents.plugins.builtin.events.async_event_bus import AsyncEventBus
 from openagents.plugins.builtin.events.file_logging import FileLoggingEventBus
 from openagents.plugins.builtin.events.otel_bridge import OtelEventBusBridge
@@ -76,6 +80,7 @@ from openagents.plugins.builtin.tool.text_ops import (
     RipgrepTool,
     TextTransformTool,
 )
+from openagents.plugins.builtin.tool_executor.concurrent_batch import ConcurrentBatchExecutor
 from openagents.plugins.builtin.tool_executor.filesystem_aware import FilesystemAwareExecutor
 from openagents.plugins.builtin.tool_executor.retry import RetryToolExecutor
 from openagents.plugins.builtin.tool_executor.safe import SafeToolExecutor
@@ -88,6 +93,7 @@ _DECORATOR_REGISTRY_MAP: dict[str, dict[str, type[Any]]] = {
     "session": _SESSION_REGISTRY,
     "events": _EVENT_REGISTRY,
     "skills": {},
+    "diagnostics": {},
     "tool_executor": _TOOL_EXECUTOR_REGISTRY,
     "context_assembler": _CONTEXT_ASSEMBLER_REGISTRY,
     "tool": _TOOL_REGISTRY,
@@ -123,10 +129,17 @@ _BUILTIN_REGISTRY: dict[str, dict[str, type[Any]]] = {
     "skills": {
         "local": LocalSkillsManager,
     },
+    "diagnostics": {
+        "null": NullDiagnosticsPlugin,
+        "rich": RichDiagnosticsPlugin,
+        "langfuse": LangfuseExporter,
+        "phoenix": PhoenixExporter,
+    },
     "tool_executor": {
         "safe": SafeToolExecutor,
         "retry": RetryToolExecutor,
         "filesystem_aware": FilesystemAwareExecutor,
+        "concurrent_batch": ConcurrentBatchExecutor,
     },
     "context_assembler": {
         "truncating": TruncatingContextAssembler,

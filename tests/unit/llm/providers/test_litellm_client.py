@@ -55,3 +55,133 @@ async def test_aclose_is_idempotent():
     client = LiteLLMClient(model="bedrock/foo")
     await client.aclose()
     await client.aclose()  # must not raise
+
+
+# ---------- generate() happy path tests ----------
+
+import types  # noqa: E402
+
+from openagents.config.schema import LLMPricing  # noqa: E402
+
+
+def _fake_response(
+    *,
+    text: str = "hello",
+    tool_calls: list | None = None,
+    finish_reason: str = "stop",
+    prompt_tokens: int = 10,
+    completion_tokens: int = 5,
+    total_tokens: int = 15,
+    cached_tokens_openai_style: int | None = None,
+    cached_tokens_anthropic_style: int | None = None,
+    response_id: str = "resp-1",
+    model: str = "bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0",
+):
+    """Build a SimpleNamespace object mimicking a LiteLLM ModelResponse."""
+    message = types.SimpleNamespace(content=text, tool_calls=tool_calls)
+    choice = types.SimpleNamespace(message=message, finish_reason=finish_reason)
+    usage = types.SimpleNamespace(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+    )
+    if cached_tokens_openai_style is not None:
+        usage.prompt_tokens_details = types.SimpleNamespace(cached_tokens=cached_tokens_openai_style)
+    if cached_tokens_anthropic_style is not None:
+        usage.cache_read_input_tokens = cached_tokens_anthropic_style
+    response = types.SimpleNamespace(
+        choices=[choice],
+        usage=usage,
+        id=response_id,
+        model=model,
+    )
+    response.model_dump = lambda: {"id": response_id, "model": model}
+    return response
+
+
+@pytest.mark.asyncio
+async def test_generate_plain_text_and_usage(monkeypatch):
+    captured: dict = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+        return _fake_response(text="hi there", prompt_tokens=7, completion_tokens=3, total_tokens=10)
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="bedrock/foo", max_tokens=100)
+    resp = await client.generate(messages=[{"role": "user", "content": "hey"}])
+
+    assert resp.output_text == "hi there"
+    assert resp.content == [{"type": "text", "text": "hi there"}]
+    assert resp.usage.input_tokens == 7
+    assert resp.usage.output_tokens == 3
+    assert resp.usage.total_tokens == 10
+    assert resp.provider == "litellm:bedrock"
+    assert resp.response_id == "resp-1"
+    assert captured["model"] == "bedrock/foo"
+    assert captured["messages"] == [{"role": "user", "content": "hey"}]
+
+
+@pytest.mark.asyncio
+async def test_generate_prompt_cache_dual_style(monkeypatch):
+    async def fake_acompletion(**kwargs):
+        return _fake_response(cached_tokens_openai_style=4, cached_tokens_anthropic_style=6)
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="bedrock/foo")
+    resp = await client.generate(messages=[{"role": "user", "content": "x"}])
+
+    # Anthropic-style wins when both present (it's the newer field).
+    assert resp.usage.metadata["cache_read_input_tokens"] == 6
+
+
+@pytest.mark.asyncio
+async def test_generate_prompt_cache_openai_style_only(monkeypatch):
+    async def fake_acompletion(**kwargs):
+        return _fake_response(cached_tokens_openai_style=4)
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="bedrock/foo")
+    resp = await client.generate(messages=[{"role": "user", "content": "x"}])
+
+    assert resp.usage.metadata["cache_read_input_tokens"] == 4
+
+
+@pytest.mark.asyncio
+async def test_generate_response_format_json(monkeypatch):
+    async def fake_acompletion(**kwargs):
+        return _fake_response(text='{"answer": 42}')
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="gemini/gemini-1.5-pro")
+    resp = await client.generate(
+        messages=[{"role": "user", "content": "x"}],
+        response_format={"type": "json_object"},
+    )
+
+    assert resp.structured_output == {"answer": 42}
+
+
+@pytest.mark.asyncio
+async def test_generate_cost_with_pricing(monkeypatch):
+    async def fake_acompletion(**kwargs):
+        return _fake_response(prompt_tokens=1_000_000, completion_tokens=1_000_000, total_tokens=2_000_000)
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    pricing = LLMPricing(input=3.0, output=15.0)
+    client = LiteLLMClient(model="bedrock/foo", pricing=pricing)
+    resp = await client.generate(messages=[{"role": "user", "content": "x"}])
+
+    assert resp.usage.metadata["cost_usd"] == pytest.approx(18.0)
+
+
+@pytest.mark.asyncio
+async def test_generate_cost_without_pricing(monkeypatch):
+    async def fake_acompletion(**kwargs):
+        return _fake_response()
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="bedrock/foo")  # no pricing
+    resp = await client.generate(messages=[{"role": "user", "content": "x"}])
+
+    assert resp.usage.metadata["cost_usd"] is None

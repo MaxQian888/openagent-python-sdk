@@ -11,11 +11,19 @@ Instantiating this client has process-global side effects: it sets
 
 from __future__ import annotations
 
+import json as _json
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 from openagents.errors.exceptions import ConfigError
-from openagents.llm.base import LLMClient
+from openagents.llm.base import (
+    LLMClient,
+    LLMResponse,
+    LLMToolCall,
+    LLMUsage,
+    _parse_structured_output,
+)
 
 if TYPE_CHECKING:
     from openagents.config.schema import LLMPricing, LLMRetryOptions
@@ -53,6 +61,54 @@ def _derive_provider_name(model: str) -> str:
         return "litellm"
     prefix = model.split("/", 1)[0].strip()
     return f"litellm:{prefix}" if prefix else "litellm"
+
+
+def _extract_cached_tokens(usage_obj: Any) -> int:
+    """Read prompt-cache tokens from both OpenAI-style and Anthropic-style fields.
+
+    Anthropic-style ``cache_read_input_tokens`` wins when present and non-zero;
+    otherwise fall back to OpenAI-style ``prompt_tokens_details.cached_tokens``.
+    """
+    anthropic_style = getattr(usage_obj, "cache_read_input_tokens", None)
+    if isinstance(anthropic_style, int) and anthropic_style > 0:
+        return anthropic_style
+    details = getattr(usage_obj, "prompt_tokens_details", None)
+    if details is not None:
+        cached = getattr(details, "cached_tokens", None)
+        if isinstance(cached, int) and cached > 0:
+            return cached
+    return 0
+
+
+def _parse_tool_calls(raw: Any) -> list[LLMToolCall]:
+    if not raw:
+        return []
+    out: list[LLMToolCall] = []
+    for tc in raw:
+        fn = getattr(tc, "function", None)
+        if fn is None and isinstance(tc, dict):
+            fn = tc.get("function")
+        if fn is None:
+            continue
+        name = getattr(fn, "name", None)
+        if name is None and isinstance(fn, dict):
+            name = fn.get("name")
+        name = name or ""
+        args_raw = getattr(fn, "arguments", None)
+        if args_raw is None and isinstance(fn, dict):
+            args_raw = fn.get("arguments")
+        tc_id = getattr(tc, "id", None)
+        if tc_id is None and isinstance(tc, dict):
+            tc_id = tc.get("id")
+        args_str = args_raw if isinstance(args_raw, str) else _json.dumps(args_raw or {})
+        try:
+            args_dict = _json.loads(args_str) if args_str else {}
+            if not isinstance(args_dict, dict):
+                args_dict = {}
+        except (TypeError, _json.JSONDecodeError):
+            args_dict = {}
+        out.append(LLMToolCall(name=name, arguments=args_dict, id=tc_id, raw_arguments=args_str))
+    return out
 
 
 class LiteLLMClient(LLMClient):
@@ -100,6 +156,115 @@ class LiteLLMClient(LLMClient):
             self.price_per_mtok_output = pricing.output
             self.price_per_mtok_cached_read = pricing.cached_read
             self.price_per_mtok_cached_write = pricing.cached_write
+
+    async def generate(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | None = None,
+        response_format: dict[str, Any] | None = None,
+    ) -> LLMResponse:
+        kwargs = self._build_kwargs(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            tools=tools,
+            tool_choice=tool_choice,
+            response_format=response_format,
+            stream=False,
+        )
+        raw = await litellm.acompletion(**kwargs)
+        return self._to_llm_response(raw, response_format=response_format)
+
+    def _build_kwargs(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        model: str | None,
+        temperature: float | None,
+        max_tokens: int | None,
+        tools: list[dict[str, Any]] | None,
+        tool_choice: dict[str, Any] | None,
+        response_format: dict[str, Any] | None,
+        stream: bool,
+    ) -> dict[str, Any]:
+        effective_model = model or self.model_id
+        effective_temp = temperature if temperature is not None else self._default_temperature
+        effective_max = max_tokens if max_tokens is not None else self._max_tokens
+
+        kwargs: dict[str, Any] = {
+            "model": effective_model,
+            "messages": messages,
+            "max_tokens": effective_max,
+            "timeout": self._timeout_s,
+            "stream": stream,
+        }
+        if effective_temp is not None:
+            kwargs["temperature"] = effective_temp
+        if tools:
+            kwargs["tools"] = tools
+        if tool_choice:
+            kwargs["tool_choice"] = tool_choice
+        if response_format:
+            kwargs["response_format"] = response_format
+        if self._api_base:
+            kwargs["api_base"] = self._api_base
+        if self._extra_headers:
+            kwargs["extra_headers"] = self._extra_headers
+        api_key = self._resolve_api_key()
+        if api_key is not None:
+            kwargs["api_key"] = api_key
+        kwargs.update(self._extra_kwargs)
+        return kwargs
+
+    def _resolve_api_key(self) -> str | None:
+        if not self._api_key_env:
+            return None
+        return os.environ.get(self._api_key_env) or None
+
+    def _to_llm_response(
+        self,
+        raw: Any,
+        *,
+        response_format: dict[str, Any] | None,
+    ) -> LLMResponse:
+        choice = raw.choices[0]
+        message = choice.message
+        text = getattr(message, "content", None) or ""
+        tool_calls = _parse_tool_calls(getattr(message, "tool_calls", None))
+
+        usage_obj = getattr(raw, "usage", None)
+        if usage_obj is not None:
+            usage = LLMUsage(
+                input_tokens=int(getattr(usage_obj, "prompt_tokens", 0) or 0),
+                output_tokens=int(getattr(usage_obj, "completion_tokens", 0) or 0),
+                total_tokens=int(getattr(usage_obj, "total_tokens", 0) or 0),
+                metadata={"cache_read_input_tokens": _extract_cached_tokens(usage_obj)},
+            ).normalized()
+        else:
+            usage = LLMUsage().normalized()
+        usage = self._compute_cost_for(usage=usage, overrides=self._pricing)
+
+        dump = raw.model_dump() if hasattr(raw, "model_dump") else None
+
+        response = LLMResponse(
+            output_text=text,
+            content=[{"type": "text", "text": text}] if text else [],
+            tool_calls=tool_calls,
+            usage=usage,
+            stop_reason=getattr(choice, "finish_reason", None),
+            structured_output=_parse_structured_output(text, response_format),
+            model=getattr(raw, "model", self.model_id),
+            provider=self.provider_name,
+            response_id=getattr(raw, "id", None),
+            raw=dump,
+        )
+        return self._store_response(response)
 
     async def aclose(self) -> None:
         session = getattr(litellm, "aclient_session", None) if litellm else None

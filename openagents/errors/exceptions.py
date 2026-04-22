@@ -324,6 +324,25 @@ class ToolRateLimitError(RetryableToolError):
     code: ClassVar[str] = "tool.rate_limit"
     retryable: ClassVar[bool] = True
 
+    retry_after_ms: int | None
+
+    def __init__(
+        self,
+        message: str,
+        tool_name: str = "",
+        *,
+        retry_after_ms: int | None = None,
+        hint: str | None = None,
+        docs_url: str | None = None,
+    ) -> None:
+        super().__init__(message, tool_name=tool_name, hint=hint, docs_url=docs_url)
+        self.retry_after_ms = retry_after_ms
+
+    def to_dict(self) -> dict[str, Any]:
+        data = super().to_dict()
+        data["context"]["retry_after_ms"] = self.retry_after_ms
+        return data
+
 
 class ToolUnavailableError(RetryableToolError):
     """Transient unreachability (DNS, TCP, 5xx). Retryable."""
@@ -358,6 +377,38 @@ class LLMRateLimitError(LLMError):
 
     code: ClassVar[str] = "llm.rate_limit"
     retryable: ClassVar[bool] = True
+
+    retry_after_ms: int | None
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        retry_after_ms: int | None = None,
+        hint: str | None = None,
+        docs_url: str | None = None,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        run_id: str | None = None,
+        tool_id: str | None = None,
+        step_number: int | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            hint=hint,
+            docs_url=docs_url,
+            agent_id=agent_id,
+            session_id=session_id,
+            run_id=run_id,
+            tool_id=tool_id,
+            step_number=step_number,
+        )
+        self.retry_after_ms = retry_after_ms
+
+    def to_dict(self) -> dict[str, Any]:
+        data = super().to_dict()
+        data["context"]["retry_after_ms"] = self.retry_after_ms
+        return data
 
 
 class LLMResponseError(LLMError):

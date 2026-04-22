@@ -72,8 +72,9 @@ class ErrorDetails(BaseModel):
 
     @classmethod
     def from_exception(cls, exc: BaseException, *, _depth: int = 0) -> "ErrorDetails":
-        from openagents.errors.exceptions import OpenAgentsError
-
+        # OpenAgentsError is available from the module-level import above; safe
+        # because ``errors.exceptions`` does not import from ``errors.__init__``
+        # (which is what re-exports ``ErrorDetails`` via ``interfaces.runtime``).
         _MAX_DEPTH = 3
         if isinstance(exc, OpenAgentsError):
             data = exc.to_dict()

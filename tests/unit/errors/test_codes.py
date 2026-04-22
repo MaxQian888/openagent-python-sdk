@@ -76,3 +76,17 @@ def test_codes_and_retryable_match_spec_table():
         want_code, want_retryable = expected
         assert cls.code == want_code, f"{cls.__name__}.code {cls.code!r} != {want_code!r}"
         assert cls.retryable is want_retryable, f"{cls.__name__}.retryable {cls.retryable} != {want_retryable}"
+
+
+def test_no_stale_entries_in_expected_table():
+    """EXPECTED is a closed set — remove rows when classes are deleted."""
+    live_names = {cls.__name__ for cls in _all_openagents_subclasses()}
+    stale = set(EXPECTED) - live_names
+    assert not stale, f"EXPECTED table has stale entries not in exceptions.py: {sorted(stale)}"
+
+
+def test_every_subclass_explicitly_declares_classvars():
+    """'Don't rely on inheritance for code' — enforce via __dict__ presence."""
+    for cls in _all_openagents_subclasses():
+        assert "code" in cls.__dict__, f"{cls.__name__} does not declare code explicitly"
+        assert "retryable" in cls.__dict__, f"{cls.__name__} does not declare retryable explicitly"

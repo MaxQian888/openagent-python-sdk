@@ -211,7 +211,7 @@ class LLMOptions(BaseModel):
 
     @model_validator(mode="after")
     def _validate_llm_rules(self) -> "LLMOptions":
-        allowed = {"anthropic", "mock", "openai_compatible"}
+        allowed = {"anthropic", "litellm", "mock", "openai_compatible"}
         if self.provider not in allowed:
             raise ConfigValidationError(f"'llm.provider' must be one of {sorted(allowed)}")
         if self.provider == "openai_compatible" and not self.api_base:

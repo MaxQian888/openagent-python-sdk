@@ -1076,6 +1076,7 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                     run_result.metadata["error_snapshot"] = {
                         "run_id": snapshot.run_id,
                         "error_type": snapshot.error_type,
+                        "error_code": snapshot.error_code,
                         "error_message": snapshot.error_message,
                         "tool_call_chain": snapshot.tool_call_chain,
                         "last_transcript": snapshot.last_transcript,

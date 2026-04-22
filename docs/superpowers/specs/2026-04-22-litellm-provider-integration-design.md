@@ -48,8 +48,9 @@ openagents/llm/providers/
 ### 2.3 重试策略单向传导
 
 本 SDK 的 `_RetryPolicy` 与 LiteLLM 内置重试互斥,避免乘法爆炸。约定:
-- `LLMRetryOptions.max_attempts - 1` → 透传为 LiteLLM `num_retries` kwarg
-- `retry_on_connection_errors=True` → 透传为 LiteLLM `retry_policy`(连接错误走指数退避)
+- `LLMRetryOptions.max_attempts - 1` → 透传为 LiteLLM `num_retries` kwarg(这是主信号)
+- `retry_on_connection_errors=True` 时,额外构造 `litellm.RetryPolicy(TimeoutErrorRetries=max_attempts-1, ContentPolicyViolationErrorRetries=0, BadRequestErrorRetries=0, AuthenticationErrorRetries=0, RateLimitErrorRetries=max_attempts-1)` 并作为 `retry_policy` kwarg 透传(`litellm.RetryPolicy` 是结构化 dataclass,非 bool)
+- `retry_on_connection_errors=False` 时**不**传 `retry_policy`,仅靠 `num_retries` 覆盖所有错误类型
 - 本 SDK 层**不再**对 LiteLLM 调用做二次重试包装
 
 ## 3. 配置
@@ -114,7 +115,7 @@ LiteLLM 输入即 OpenAI ChatCompletion 格式,`messages` / `tools` / `tool_choi
 - `api_base` → `api_base`(若配置)
 - `api_key_env` 解析后 → `api_key`(若能解析)
 - `retry.max_attempts - 1` → `num_retries`
-- `retry.retry_on_connection_errors` → `retry_policy`
+- `retry.retry_on_connection_errors=True` → 构造 `litellm.RetryPolicy(...)` 作为 `retry_policy` kwarg(详见 §2.3);`False` 时不传
 - 白名单 extras → 同名 kwarg
 
 ### 4.2 非流式响应 → `LLMResponse`
@@ -290,7 +291,7 @@ omit = [
 | 9 | 非流式 4 种异常映射:`RateLimitError` / `APIConnectionError` / `Timeout` / `APIError` → `LLMRateLimitError` / `LLMConnectionError` / `LLMConnectionError` / `LLMResponseError` |
 | 10 | 流式下同样 4 种异常 → `LLMChunk(error_type="rate_limit" / "connection" / "connection" / "response")` |
 | 11 | `count_tokens` 调 `litellm.token_counter`;抛异常时降级 `len // 4` + 一次 WARN |
-| 12 | `retry_options` 映射:`max_attempts=3` → `num_retries=2`;`retry_on_connection_errors=True` → `retry_policy=...` |
+| 12 | `retry_options` 映射:`max_attempts=3` → `num_retries=2`;`retry_on_connection_errors=True` → `retry_policy` 是 `litellm.RetryPolicy` 实例,`TimeoutErrorRetries == RateLimitErrorRetries == 2`,`AuthenticationErrorRetries == BadRequestErrorRetries == 0`;`retry_on_connection_errors=False` → `retry_policy` kwarg 不出现在调用参数中 |
 | 13 | extras 白名单:`aws_region_name` 透传;`fallbacks` / `callbacks` 即使注入也不透传 + WARN |
 | 14 | `api_key_env` 指向的 env 缺失 → 不传 `api_key` kwarg(交给 LiteLLM 凭证链) |
 | 15 | `__init__` 副作用:`litellm.telemetry == False`,两 callback 列表清空,`drop_params == True` |

@@ -23,6 +23,7 @@ from openagents.errors.exceptions import (
     LLMResponseError,
 )
 from openagents.llm.base import (
+    LLMChunk,
     LLMClient,
     LLMResponse,
     LLMToolCall,
@@ -83,6 +84,21 @@ def _extract_cached_tokens(usage_obj: Any) -> int:
         if isinstance(cached, int) and cached > 0:
             return cached
     return 0
+
+
+_STREAM_ERROR_TYPE_BY_NAME: dict[str, str] = {
+    "RateLimitError": "rate_limit",
+    "APIConnectionError": "connection",
+    "Timeout": "connection",
+    "APIError": "response",
+}
+
+
+def _classify_litellm_error_type(exc: BaseException) -> str:
+    name = type(exc).__name__
+    if type(exc).__module__.startswith("litellm"):
+        return _STREAM_ERROR_TYPE_BY_NAME.get(name, "response")
+    return "unknown"
 
 
 def _map_litellm_exception(exc: BaseException) -> Exception:
@@ -293,6 +309,84 @@ class LiteLLMClient(LLMClient):
             raw=dump,
         )
         return self._store_response(response)
+
+    async def complete_stream(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | None = None,
+        response_format: dict[str, Any] | None = None,
+    ):
+        kwargs = self._build_kwargs(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            tools=tools,
+            tool_choice=tool_choice,
+            response_format=response_format,
+            stream=True,
+        )
+        kwargs.setdefault("stream_options", {"include_usage": True})
+
+        try:
+            stream = await litellm.acompletion(**kwargs)
+        except Exception as exc:
+            yield LLMChunk(
+                type="error",
+                error=str(exc),
+                error_type=_classify_litellm_error_type(exc),
+            )
+            return
+
+        last_usage: LLMUsage | None = None
+        try:
+            async for chunk in stream:
+                choices = getattr(chunk, "choices", None) or [None]
+                choice = choices[0]
+                if choice is not None:
+                    delta = getattr(choice, "delta", None)
+                    if delta is not None:
+                        content_piece = getattr(delta, "content", None)
+                        if content_piece:
+                            yield LLMChunk(type="content_block_delta", delta=content_piece)
+                        tool_deltas = getattr(delta, "tool_calls", None) or []
+                        for td in tool_deltas:
+                            fn = getattr(td, "function", None)
+                            name = getattr(fn, "name", None) if fn else None
+                            args_delta = getattr(fn, "arguments", None) if fn else None
+                            yield LLMChunk(
+                                type="content_block_delta",
+                                delta={
+                                    "tool_use": {
+                                        "index": getattr(td, "index", None),
+                                        "id": getattr(td, "id", None),
+                                        "name": name,
+                                        "arguments_delta": args_delta or "",
+                                    }
+                                },
+                            )
+                usage_obj = getattr(chunk, "usage", None)
+                if usage_obj is not None:
+                    last_usage = LLMUsage(
+                        input_tokens=int(getattr(usage_obj, "prompt_tokens", 0) or 0),
+                        output_tokens=int(getattr(usage_obj, "completion_tokens", 0) or 0),
+                        total_tokens=int(getattr(usage_obj, "total_tokens", 0) or 0),
+                        metadata={"cache_read_input_tokens": _extract_cached_tokens(usage_obj)},
+                    ).normalized()
+        except Exception as exc:
+            yield LLMChunk(
+                type="error",
+                error=str(exc),
+                error_type=_classify_litellm_error_type(exc),
+            )
+            return
+
+        yield LLMChunk(type="message_stop", usage=last_usage)
 
     async def aclose(self) -> None:
         session = getattr(litellm, "aclient_session", None) if litellm else None

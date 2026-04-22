@@ -274,3 +274,120 @@ async def test_generate_maps_litellm_exceptions(monkeypatch, exc_class_name, exp
     client = LiteLLMClient(model="bedrock/foo")
     with pytest.raises(expected_sdk_exc):
         await client.generate(messages=[{"role": "user", "content": "x"}])
+
+
+# ---------- complete_stream() tests ----------
+
+
+def _mk_stream_chunk(
+    *,
+    content_delta: str | None = None,
+    tool_call_delta=None,
+    usage=None,
+    finish_reason=None,
+):
+    delta = types.SimpleNamespace(
+        content=content_delta,
+        tool_calls=tool_call_delta,
+    )
+    choice = types.SimpleNamespace(delta=delta, finish_reason=finish_reason)
+    chunk = types.SimpleNamespace(choices=[choice])
+    if usage is not None:
+        chunk.usage = usage
+    return chunk
+
+
+async def _async_gen(items):
+    for it in items:
+        yield it
+
+
+@pytest.mark.asyncio
+async def test_stream_yields_content_deltas_and_message_stop(monkeypatch):
+    usage = types.SimpleNamespace(prompt_tokens=2, completion_tokens=3, total_tokens=5)
+    chunks = [
+        _mk_stream_chunk(content_delta="hel"),
+        _mk_stream_chunk(content_delta="lo"),
+        _mk_stream_chunk(usage=usage, finish_reason="stop"),
+    ]
+
+    async def fake_acompletion(**kwargs):
+        return _async_gen(chunks)
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="bedrock/foo")
+    collected = []
+    async for c in client.complete_stream(messages=[{"role": "user", "content": "hi"}]):
+        collected.append(c)
+
+    content_chunks = [c for c in collected if c.type == "content_block_delta"]
+    assert [c.delta for c in content_chunks] == ["hel", "lo"]
+    stop = [c for c in collected if c.type == "message_stop"]
+    assert len(stop) == 1
+    assert stop[0].usage.input_tokens == 2
+    assert stop[0].usage.output_tokens == 3
+
+
+@pytest.mark.asyncio
+async def test_stream_tool_call_increments_concat(monkeypatch):
+    tc_part1 = types.SimpleNamespace(
+        index=0,
+        id="call_1",
+        function=types.SimpleNamespace(name="search", arguments='{"q": '),
+    )
+    tc_part2 = types.SimpleNamespace(
+        index=0,
+        id=None,
+        function=types.SimpleNamespace(name=None, arguments='"kittens"}'),
+    )
+    chunks = [
+        _mk_stream_chunk(tool_call_delta=[tc_part1]),
+        _mk_stream_chunk(tool_call_delta=[tc_part2]),
+        _mk_stream_chunk(finish_reason="tool_calls"),
+    ]
+
+    async def fake_acompletion(**kwargs):
+        return _async_gen(chunks)
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="bedrock/foo")
+    tool_deltas = []
+    async for c in client.complete_stream(messages=[{"role": "user", "content": "x"}]):
+        if c.type == "content_block_delta" and isinstance(c.delta, dict):
+            tool_deltas.append(c.delta)
+
+    combined_args = "".join(d["tool_use"].get("arguments_delta", "") for d in tool_deltas)
+    assert combined_args == '{"q": "kittens"}'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "exc_class_name,expected_error_type",
+    [
+        ("RateLimitError", "rate_limit"),
+        ("APIConnectionError", "connection"),
+        ("Timeout", "connection"),
+        ("APIError", "response"),
+    ],
+)
+async def test_stream_maps_exceptions_to_error_chunks(monkeypatch, exc_class_name, expected_error_type):
+    exc_class = getattr(lc_module.litellm.exceptions, exc_class_name)
+    exc_instance = _mk_litellm_exception(exc_class)
+
+    async def failing_gen():
+        if False:  # pragma: no cover
+            yield
+        raise exc_instance
+
+    async def fake_acompletion(**kwargs):
+        return failing_gen()
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="bedrock/foo")
+    collected = []
+    async for c in client.complete_stream(messages=[{"role": "user", "content": "x"}]):
+        collected.append(c)
+
+    errors = [c for c in collected if c.type == "error"]
+    assert len(errors) == 1
+    assert errors[0].error_type == expected_error_type

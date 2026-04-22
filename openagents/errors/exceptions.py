@@ -63,6 +63,28 @@ class OpenAgentsError(Exception):
             parts.append(f"  docs: {self.docs_url}")
         return "\n".join(parts)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a stable shape for HTTP / SSE / trace exporters.
+
+        Cause chain is intentionally excluded — ``ErrorDetails.from_exception``
+        owns that recursion so callers cannot get the same walk in two places.
+        """
+        message = super().__str__() or ""
+        return {
+            "code": type(self).code,
+            "message": message.splitlines()[0] if message else "",
+            "hint": self.hint,
+            "docs_url": self.docs_url,
+            "retryable": type(self).retryable,
+            "context": {
+                "agent_id": self.agent_id,
+                "session_id": self.session_id,
+                "run_id": self.run_id,
+                "tool_id": self.tool_id,
+                "step_number": self.step_number,
+            },
+        }
+
     def with_context(self: OpenAgentsErrorT, **kwargs: str | int | None) -> OpenAgentsErrorT:
         """Attach runtime identifiers to an existing exception."""
 

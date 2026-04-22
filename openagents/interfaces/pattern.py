@@ -330,6 +330,7 @@ class PatternPlugin(BasePlugin):
             await self.emit(
                 "llm.failed",
                 model=model,
+                error=str(exc),
                 _metrics=failure_metrics,
                 error_details=ErrorDetails.from_exception(exc).model_dump(),
             )

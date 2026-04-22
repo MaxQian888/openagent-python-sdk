@@ -17,16 +17,12 @@ from pydantic import BaseModel, Field
 from openagents.errors.exceptions import (
     BudgetExhausted,
     ConfigError,
-    LLMConnectionError,
-    LLMRateLimitError,
     MaxStepsExceeded,
     ModelRetryError,
     OpenAgentsError,
     OutputValidationError,
     PatternError,
     PermanentToolError,
-    ToolRateLimitError,
-    ToolUnavailableError,
 )
 from openagents.interfaces.capabilities import (
     MEMORY_INJECT,
@@ -71,17 +67,6 @@ from openagents.interfaces.tool import (
 from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
 logger = logging.getLogger("openagents")
-
-# Errors classified as retryable by the durable-run resume loop.
-# Any other OpenAgentsError subclass (PermanentToolError, ConfigError,
-# BudgetExhausted, OutputValidationError, PatternError, ModelRetryError
-# post-budget) is treated as permanent.
-RETRYABLE_RUN_ERRORS: tuple[type[OpenAgentsError], ...] = (
-    LLMRateLimitError,
-    LLMConnectionError,
-    ToolRateLimitError,
-    ToolUnavailableError,
-)
 
 # State-dict key used by the durable-run machinery to stash usage /
 # artifacts / step counter across checkpoints. Private to this module.
@@ -826,8 +811,9 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                 result: Any = None
 
                 try:
-                    # Durable outer loop: catches retryable errors and
-                    # resumes from the most recent checkpoint.
+                    # Durable outer loop: catches OpenAgentsError with
+                    # exc.retryable=True and resumes from the most recent
+                    # checkpoint. Any exc.retryable=False error propagates.
                     while True:
                         try:
                             raw = await plugins.pattern.execute()
@@ -880,8 +866,8 @@ class DefaultRuntime(TypedConfigPluginMixin, RuntimePlugin):
                                     raw = await plugins.pattern.execute()
                                     self._enforce_duration_budget(request=request, started_at=started_at)
                             break  # durable outer loop success
-                        except RETRYABLE_RUN_ERRORS as exc:
-                            if not request.durable:
+                        except OpenAgentsError as exc:
+                            if not request.durable or not exc.retryable:
                                 raise
                             durable_blob = session_state.get(_DURABLE_STATE_KEY) or {}
                             checkpoint_id = durable_blob.get("checkpoint_id")

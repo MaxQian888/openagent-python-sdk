@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypeVar
+from typing import Any, ClassVar, Literal, TypeVar
 
 OpenAgentsErrorT = TypeVar("OpenAgentsErrorT", bound="OpenAgentsError")
 
@@ -21,6 +21,9 @@ class OpenAgentsError(Exception):
     Both default to ``None`` so existing call sites remain byte-identical
     in their formatting unless they opt in.
     """
+
+    code: ClassVar[str] = "openagents.error"
+    retryable: ClassVar[bool] = False
 
     agent_id: str | None
     session_id: str | None
@@ -72,41 +75,71 @@ class OpenAgentsError(Exception):
 class ConfigError(OpenAgentsError):
     """Raised when config parsing or validation fails."""
 
+    code: ClassVar[str] = "config.error"
+    retryable: ClassVar[bool] = False
+
 
 class ConfigValidationError(ConfigError):
     """Raised when a config payload violates the schema."""
+
+    code: ClassVar[str] = "config.validation"
+    retryable: ClassVar[bool] = False
 
 
 class ConfigLoadError(ConfigError):
     """Raised when a config file cannot be read or decoded."""
 
+    code: ClassVar[str] = "config.load"
+    retryable: ClassVar[bool] = False
+
 
 class PluginError(OpenAgentsError):
     """Base exception for plugin loading and validation failures."""
+
+    code: ClassVar[str] = "plugin.error"
+    retryable: ClassVar[bool] = False
 
 
 class PluginLoadError(PluginError):
     """Raised when plugin loading fails."""
 
+    code: ClassVar[str] = "plugin.load"
+    retryable: ClassVar[bool] = False
+
 
 class PluginCapabilityError(PluginError):
     """Raised when plugin capabilities do not meet requirements."""
+
+    code: ClassVar[str] = "plugin.capability"
+    retryable: ClassVar[bool] = False
 
 
 class PluginConfigError(PluginError):
     """Raised when plugin config is invalid."""
 
+    code: ClassVar[str] = "plugin.config"
+    retryable: ClassVar[bool] = False
+
 
 class ExecutionError(OpenAgentsError):
     """Base exception for runtime execution failures."""
+
+    code: ClassVar[str] = "execution.error"
+    retryable: ClassVar[bool] = False
 
 
 class MaxStepsExceeded(ExecutionError):
     """Raised when a step or tool-call budget is exceeded."""
 
+    code: ClassVar[str] = "execution.max_steps"
+    retryable: ClassVar[bool] = False
+
 
 class BudgetExhausted(ExecutionError):
     """Raised when runtime budget limits are exceeded."""
+
+    code: ClassVar[str] = "execution.budget_exhausted"
+    retryable: ClassVar[bool] = False
 
     kind: Literal["tool_calls", "duration", "steps", "cost"] | None
     current: float | int | None
@@ -145,6 +178,9 @@ class BudgetExhausted(ExecutionError):
 class OutputValidationError(ExecutionError):
     """Final output failed validation after max retries."""
 
+    code: ClassVar[str] = "execution.output_validation"
+    retryable: ClassVar[bool] = False
+
     output_type: Any
     attempts: int
     last_validation_error: Any
@@ -182,13 +218,22 @@ class OutputValidationError(ExecutionError):
 class SessionError(ExecutionError):
     """Raised when session management fails."""
 
+    code: ClassVar[str] = "session.error"
+    retryable: ClassVar[bool] = False
+
 
 class PatternError(ExecutionError):
     """Raised when a pattern fails during execution."""
 
+    code: ClassVar[str] = "pattern.error"
+    retryable: ClassVar[bool] = False
+
 
 class ToolError(OpenAgentsError):
     """Base exception for tool errors."""
+
+    code: ClassVar[str] = "tool.error"
+    retryable: ClassVar[bool] = False
 
     tool_name: str
 
@@ -212,57 +257,99 @@ class ToolError(OpenAgentsError):
 class RetryableToolError(ToolError):
     """Tool error that can be retried."""
 
+    code: ClassVar[str] = "tool.retryable"
+    retryable: ClassVar[bool] = True
+
 
 class PermanentToolError(ToolError):
     """Tool error that should not be retried."""
+
+    code: ClassVar[str] = "tool.permanent"
+    retryable: ClassVar[bool] = False
 
 
 class ToolTimeoutError(RetryableToolError):
     """Raised when a tool execution times out."""
 
+    code: ClassVar[str] = "tool.timeout"
+    retryable: ClassVar[bool] = True
+
 
 class ToolNotFoundError(PermanentToolError):
     """Raised when a requested tool is not registered."""
+
+    code: ClassVar[str] = "tool.not_found"
+    retryable: ClassVar[bool] = False
 
 
 class ToolValidationError(PermanentToolError):
     """Tool parameters failed schema or semantic validation. Not retryable."""
 
+    code: ClassVar[str] = "tool.validation"
+    retryable: ClassVar[bool] = False
+
 
 class ToolAuthError(PermanentToolError):
     """Tool authentication or authorization failed. Not retryable without new creds."""
+
+    code: ClassVar[str] = "tool.auth"
+    retryable: ClassVar[bool] = False
 
 
 class ToolRateLimitError(RetryableToolError):
     """Third-party rate-limited us. Retryable with backoff."""
 
+    code: ClassVar[str] = "tool.rate_limit"
+    retryable: ClassVar[bool] = True
+
 
 class ToolUnavailableError(RetryableToolError):
     """Transient unreachability (DNS, TCP, 5xx). Retryable."""
+
+    code: ClassVar[str] = "tool.unavailable"
+    retryable: ClassVar[bool] = True
 
 
 class ToolCancelledError(PermanentToolError):
     """Tool invocation was cancelled mid-execution via cancel_event. Not retryable."""
 
+    code: ClassVar[str] = "tool.cancelled"
+    retryable: ClassVar[bool] = False
+
 
 class LLMError(OpenAgentsError):
     """Base exception for LLM/provider failures."""
+
+    code: ClassVar[str] = "llm.error"
+    retryable: ClassVar[bool] = False
 
 
 class LLMConnectionError(LLMError):
     """Raised when a provider connection fails."""
 
+    code: ClassVar[str] = "llm.connection"
+    retryable: ClassVar[bool] = True
+
 
 class LLMRateLimitError(LLMError):
     """Raised when a provider rate-limits a request."""
+
+    code: ClassVar[str] = "llm.rate_limit"
+    retryable: ClassVar[bool] = True
 
 
 class LLMResponseError(LLMError):
     """Raised when a provider returns an invalid response."""
 
+    code: ClassVar[str] = "llm.response"
+    retryable: ClassVar[bool] = False
+
 
 class ModelRetryError(LLMError):
     """Raised when the model should retry with corrected input."""
+
+    code: ClassVar[str] = "llm.model_retry"
+    retryable: ClassVar[bool] = False
 
     validation_error: Any
 
@@ -295,13 +382,22 @@ class ModelRetryError(LLMError):
 class UserError(OpenAgentsError):
     """Raised for caller-side mistakes."""
 
+    code: ClassVar[str] = "user.error"
+    retryable: ClassVar[bool] = False
+
 
 class InvalidInputError(UserError):
     """Raised when caller-provided input is invalid."""
 
+    code: ClassVar[str] = "user.invalid_input"
+    retryable: ClassVar[bool] = False
+
 
 class AgentNotFoundError(UserError):
     """Raised when the requested agent does not exist."""
+
+    code: ClassVar[str] = "user.agent_not_found"
+    retryable: ClassVar[bool] = False
 
 
 # Backward-compatible alias kept during the migration.

@@ -237,13 +237,11 @@ def remove_installed_sinks() -> None:
     _INSTALLED_SINK_IDS.clear()
 
 
-# Python LogRecord 的标准字段集合；与 filters.RedactFilter 中的 skip set 一致
-_LOGRECORD_STD_ATTRS: frozenset[str] = frozenset({
-    "args", "asctime", "created", "exc_info", "exc_text", "filename",
-    "funcName", "levelname", "levelno", "lineno", "message", "module",
-    "msecs", "msg", "name", "pathname", "process", "processName",
-    "relativeCreated", "stack_info", "thread", "threadName",
-})
+# 标准字段集合的单一真源在 filters.py，_loguru.py 从它 import，避免漂移。
+# 实现要求：filters.RedactFilter 停止内联硬编码 skip set，
+# 改从 openagents.observability.filters 顶层导出的 _LOGRECORD_STD_ATTRS 引用。
+# 测试要求：补一条 assert 两个地方引用同一 frozenset 对象身份（`is` 比较）。
+from openagents.observability.filters import _LOGRECORD_STD_ATTRS
 
 
 class _LoguruInterceptHandler(logging.Handler):
@@ -270,10 +268,9 @@ class _LoguruInterceptHandler(logging.Handler):
                 level = record.levelno
 
             # 2. 动态 depth：从当前帧向上走，跳过 stdlib logging 内部帧
-            import logging as _logging_mod
             frame = logging.currentframe()
             depth = 2
-            while frame and frame.f_code.co_filename == _logging_mod.__file__:
+            while frame and frame.f_code.co_filename == logging.__file__:
                 frame = frame.f_back
                 depth += 1
 
@@ -407,7 +404,8 @@ class LoguruNotInstalledError(ImportError):
 | 11 | `install_sinks` 中途一个 rotation 字符串非法 → 已装的本次 sink 回滚，异常向上抛 | ✅ |
 | 12 | `reset_logging()` 幂等：空状态下重复调不抛 | ✅ |
 | 13 | 自定义数字级别（`logging.addLevelName(25, "VERBOSE")`）→ 不被 emit 静默丢弃，loguru 侧以数字级别记录 | ✅ |
-| 14 | `LoggingConfig(loguru_sinks=[...])` + `OPENAGENTS_LOG_PRETTY=1` env → `merge_env_overrides` 重建时触发互斥校验并抛 `ValidationError` | ❌ |
+| 14 | `LoggingConfig(loguru_sinks=[...])` + `OPENAGENTS_LOG_PRETTY=1` env → `merge_env_overrides` 重建时触发互斥校验并抛 `pydantic.ValidationError`（需精确断言异常类型，防止 loosely 捕获所有 `Exception`） | ❌ |
+| 16 | `openagents.observability.filters._LOGRECORD_STD_ATTRS is openagents.observability._loguru._LOGRECORD_STD_ATTRS` 身份相等，杜绝标准字段集合双份定义漂移 | ❌ |
 | 15 | 非 underscore 的 record 自定义属性流入 loguru `extra`：发 `logger.info("x", extra={"request_id": "r-1"})` → `serialize=True` sink 的 JSON 输出里能看到 `record.extra.request_id == "r-1"` | ✅ |
 
 fixture 复用既有 `_reset_before_and_after` autouse 模式，同时扩展清理 loguru 侧残留。
@@ -486,6 +484,7 @@ omit = [
 | `openagents/observability/_loguru.py` | **新文件** |
 | `openagents/observability/config.py` | 改：`LoguruSinkConfig` + `loguru_sinks` 字段 + `model_validator` |
 | `openagents/observability/logging.py` | 改：`_build_handler` 分支 + `reset_logging` 追加调用 + `configure` 回滚 |
+| `openagents/observability/filters.py` | 改：提取 `_LOGRECORD_STD_ATTRS` 顶层常量；`RedactFilter.filter` 内联 skip set 改为引用该常量（单一真源） |
 | `openagents/observability/__init__.py` | 改：导出 `LoguruSinkConfig`、`LoguruNotInstalledError` |
 
 **测试：**

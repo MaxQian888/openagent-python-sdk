@@ -16,7 +16,12 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-from openagents.errors.exceptions import ConfigError
+from openagents.errors.exceptions import (
+    ConfigError,
+    LLMConnectionError,
+    LLMRateLimitError,
+    LLMResponseError,
+)
 from openagents.llm.base import (
     LLMClient,
     LLMResponse,
@@ -78,6 +83,23 @@ def _extract_cached_tokens(usage_obj: Any) -> int:
         if isinstance(cached, int) and cached > 0:
             return cached
     return 0
+
+
+def _map_litellm_exception(exc: BaseException) -> Exception:
+    """Map ``litellm.exceptions.*`` to the SDK's typed error hierarchy.
+
+    Returns ``exc`` unchanged for non-LiteLLM exceptions so callers can
+    decide to re-raise or wrap.
+    """
+    if not type(exc).__module__.startswith("litellm"):
+        return exc
+    name = type(exc).__name__
+    if name == "RateLimitError":
+        return LLMRateLimitError(str(exc))
+    if name in ("APIConnectionError", "Timeout"):
+        return LLMConnectionError(str(exc))
+    # APIError and subclasses, plus any unclassified litellm exception
+    return LLMResponseError(str(exc))
 
 
 def _parse_tool_calls(raw: Any) -> list[LLMToolCall]:
@@ -178,7 +200,13 @@ class LiteLLMClient(LLMClient):
             response_format=response_format,
             stream=False,
         )
-        raw = await litellm.acompletion(**kwargs)
+        try:
+            raw = await litellm.acompletion(**kwargs)
+        except Exception as exc:
+            mapped = _map_litellm_exception(exc)
+            if mapped is exc:
+                raise
+            raise mapped from exc
         return self._to_llm_response(raw, response_format=response_format)
 
     def _build_kwargs(

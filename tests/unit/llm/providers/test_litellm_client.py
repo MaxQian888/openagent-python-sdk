@@ -185,3 +185,92 @@ async def test_generate_cost_without_pricing(monkeypatch):
     resp = await client.generate(messages=[{"role": "user", "content": "x"}])
 
     assert resp.usage.metadata["cost_usd"] is None
+
+
+# ---------- tool calls + non-streaming exception mapping ----------
+
+from openagents.errors.exceptions import (  # noqa: E402
+    LLMConnectionError,
+    LLMRateLimitError,
+    LLMResponseError,
+)
+
+
+@pytest.mark.asyncio
+async def test_generate_tool_calls(monkeypatch):
+    tc = types.SimpleNamespace(
+        id="call_1",
+        function=types.SimpleNamespace(name="search", arguments='{"q": "kittens"}'),
+    )
+
+    async def fake_acompletion(**kwargs):
+        return _fake_response(text="", tool_calls=[tc], finish_reason="tool_calls")
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="bedrock/foo")
+    resp = await client.generate(messages=[{"role": "user", "content": "find kittens"}])
+
+    assert len(resp.tool_calls) == 1
+    assert resp.tool_calls[0].name == "search"
+    assert resp.tool_calls[0].arguments == {"q": "kittens"}
+    assert resp.tool_calls[0].raw_arguments == '{"q": "kittens"}'
+    assert resp.tool_calls[0].id == "call_1"
+    assert resp.stop_reason == "tool_calls"
+
+
+@pytest.mark.asyncio
+async def test_generate_tool_calls_invalid_json_keeps_raw(monkeypatch):
+    tc = types.SimpleNamespace(
+        id="call_1",
+        function=types.SimpleNamespace(name="search", arguments='{"q": '),  # invalid JSON
+    )
+
+    async def fake_acompletion(**kwargs):
+        return _fake_response(text="", tool_calls=[tc], finish_reason="tool_calls")
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="bedrock/foo")
+    resp = await client.generate(messages=[{"role": "user", "content": "x"}])
+
+    assert resp.tool_calls[0].arguments == {}
+    assert resp.tool_calls[0].raw_arguments == '{"q": '
+
+
+def _mk_litellm_exception(exc_class):
+    """Construct a LiteLLM exception across its known signature variants.
+
+    LiteLLM 1.x signatures differ per class (e.g. APIError requires
+    status_code). Try APIError-shape first, then the common shape.
+    """
+    name = exc_class.__name__
+    if name == "APIError":
+        return exc_class(
+            status_code=500,
+            message="boom",
+            llm_provider="bedrock",
+            model="bedrock/foo",
+        )
+    return exc_class(message="boom", llm_provider="bedrock", model="bedrock/foo")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "exc_class_name,expected_sdk_exc",
+    [
+        ("RateLimitError", LLMRateLimitError),
+        ("APIConnectionError", LLMConnectionError),
+        ("Timeout", LLMConnectionError),
+        ("APIError", LLMResponseError),
+    ],
+)
+async def test_generate_maps_litellm_exceptions(monkeypatch, exc_class_name, expected_sdk_exc):
+    exc_class = getattr(lc_module.litellm.exceptions, exc_class_name)
+    exc_instance = _mk_litellm_exception(exc_class)
+
+    async def fake_acompletion(**kwargs):
+        raise exc_instance
+
+    monkeypatch.setattr(lc_module.litellm, "acompletion", fake_acompletion)
+    client = LiteLLMClient(model="bedrock/foo")
+    with pytest.raises(expected_sdk_exc):
+        await client.generate(messages=[{"role": "user", "content": "x"}])

@@ -219,8 +219,9 @@ async def test_error_details_on_validation_exhausted():
 
     assert result.stop_reason == StopReason.FAILED.value
     assert result.error_details is not None
-    # OutputValidationError has code "output.validation_error"
-    assert result.error_details.code is not None
+    # OutputValidationError → code "execution.output_validation" per spec §1.2
+    assert result.error_details.code == "execution.output_validation"
+    assert result.error_details.retryable is False
 
     await runtime.close()
 

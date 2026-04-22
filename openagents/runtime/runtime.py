@@ -173,10 +173,9 @@ class Runtime:
                 deps=deps,
             )
         )
-        if result.stop_reason == RUN_STOP_FAILED or result.error_details is not None:
-            if result.error_details is not None:
-                raise RuntimeError(result.error_details.message or "Agent run failed")
-            raise RuntimeError("Agent run failed")
+        if result.stop_reason == RUN_STOP_FAILED:
+            message = result.error_details.message if result.error_details is not None else "Agent run failed"
+            raise RuntimeError(message)
         return result.final_output
 
     async def run_detailed(self, *, request: RunRequest) -> RunResult:

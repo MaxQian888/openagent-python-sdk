@@ -646,7 +646,10 @@ are removed. Consumers must read RunResult.error_details (ErrorDetails model)."
 
 **Files:**
 - Modify: `openagents/plugins/builtin/runtime/default_runtime.py`
+- Modify: `openagents/interfaces/pattern.py` (for `tool.failed` / `llm.failed` emits)
 - Test: `tests/unit/runtime/test_error_details_emission.py` (new)
+
+> **Line numbers in the impl steps below are HEAD-relative at plan-write time. Earlier tasks in a chained session can shift them. Use string anchors (`RUN_FAILED`, `"memory.inject.failed"`, `"tool.failed"`, `"llm.failed"`, `"run.checkpoint_failed"`, `"run.resume_attempted"`, `"run.resume_exhausted"`) for locating the edit sites.**
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1049,7 +1052,15 @@ Expected: FAIL — `_UserRetryableError` is not in `RETRYABLE_RUN_ERRORS`, so no
 
 In `openagents/plugins/builtin/runtime/default_runtime.py`:
 
-1. Delete the imports at top: `LLMConnectionError, LLMRateLimitError, ToolRateLimitError, ToolUnavailableError` (only used for the tuple now).
+Before deleting, verify each import is only used by the tuple:
+
+```bash
+rtk grep "LLMConnectionError\|LLMRateLimitError\|ToolRateLimitError\|ToolUnavailableError" openagents/plugins/builtin/runtime/default_runtime.py
+```
+
+Expected: only the `RETRYABLE_RUN_ERRORS` tuple line(s). If any other `isinstance` / raise site remains, keep that import.
+
+1. Delete the imports at top that are now unused (only those confirmed unused after the grep).
 2. Delete the `RETRYABLE_RUN_ERRORS: tuple[...] = (...)` constant (around line 78).
 3. Locate `except RETRYABLE_RUN_ERRORS as exc:` (line ~882). Replace with:
 
@@ -1352,7 +1363,6 @@ class ErrorSnapshot:
     agent_id: str
     session_id: str
     error_type: str
-    error_code: str        # NEW — positioned right after error_type to keep dataclass positional-arg compat minimal
     error_message: str
     traceback: str
     tool_call_chain: list[dict[str, Any]]
@@ -1360,7 +1370,10 @@ class ErrorSnapshot:
     usage_at_failure: dict[str, Any]
     state_snapshot: dict[str, Any]
     captured_at: str
+    error_code: str = "error.unknown"   # NEW — defaulted so this stays a non-breaking dataclass extension
 ```
+
+Placed at the end with a default so any external code constructing `ErrorSnapshot` positionally doesn't break.
 
 In `DiagnosticsPlugin.capture_error_snapshot`, compute:
 
@@ -1455,10 +1468,38 @@ Structure (see spec §4.1). Skeleton:
 
 | code | 类 | retryable | 典型 stop_reason |
 |---|---|---|---|
+| `openagents.error` | `OpenAgentsError` | ❌ | `failed` |
+| `config.error` | `ConfigError` | ❌ | `failed` |
 | `config.load` | `ConfigLoadError` | ❌ | `failed` |
 | `config.validation` | `ConfigValidationError` | ❌ | `failed` |
+| `plugin.error` | `PluginError` | ❌ | `failed` |
 | `plugin.load` | `PluginLoadError` | ❌ | `failed` |
-| ... [完整 32 条] |
+| `plugin.capability` | `PluginCapabilityError` | ❌ | `failed` |
+| `plugin.config` | `PluginConfigError` | ❌ | `failed` |
+| `execution.error` | `ExecutionError` | ❌ | `failed` |
+| `execution.max_steps` | `MaxStepsExceeded` | ❌ | `max_steps` |
+| `execution.budget_exhausted` | `BudgetExhausted` | ❌ | `budget_exhausted` |
+| `execution.output_validation` | `OutputValidationError` | ❌ | `failed` |
+| `session.error` | `SessionError` | ❌ | `failed` |
+| `pattern.error` | `PatternError` | ❌ | `failed` |
+| `tool.error` | `ToolError` | ❌ | `failed` |
+| `tool.retryable` | `RetryableToolError` | ✅ | `failed` |
+| `tool.permanent` | `PermanentToolError` | ❌ | `failed` |
+| `tool.timeout` | `ToolTimeoutError` | ✅ | `failed` |
+| `tool.not_found` | `ToolNotFoundError` | ❌ | `failed` |
+| `tool.validation` | `ToolValidationError` | ❌ | `failed` |
+| `tool.auth` | `ToolAuthError` | ❌ | `failed` |
+| `tool.rate_limit` | `ToolRateLimitError` | ✅ | `failed` |
+| `tool.unavailable` | `ToolUnavailableError` | ✅ | `failed` |
+| `tool.cancelled` | `ToolCancelledError` | ❌ | `failed` |
+| `llm.error` | `LLMError` | ❌ | `failed` |
+| `llm.connection` | `LLMConnectionError` | ✅ | `failed` |
+| `llm.rate_limit` | `LLMRateLimitError` | ✅ | `failed` |
+| `llm.response` | `LLMResponseError` | ❌ | `failed` |
+| `llm.model_retry` | `ModelRetryError` | ❌ (consumed by runtime finalize loop) | `failed` |
+| `user.error` | `UserError` | ❌ | `failed` |
+| `user.invalid_input` | `InvalidInputError` | ❌ | `failed` |
+| `user.agent_not_found` | `AgentNotFoundError` | ❌ | `failed` |
 
 ## config.*
 

@@ -387,7 +387,7 @@ class LiteLLMClient(LLMClient):
 - [ ] **Step 4: Run tests — expect PASS**
 
 Run: `rtk uv run pytest -q tests/unit/llm/providers/test_litellm_client.py`
-Expected: 4 tests PASS (parametrized test #3 counts as 5 cases → 7 tests total actually).
+Expected: 8 tests PASS (3 non-parametrized + 5 cases from the `provider_name` parametrize).
 
 - [ ] **Step 5: Commit**
 

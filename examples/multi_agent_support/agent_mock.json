@@ -6,7 +6,14 @@
     "max_delegation_depth": 3,
     "default_child_budget": { "max_steps": 4, "max_cost_usd": 0.05 }
   },
-  "events": { "type": "async" },
+  "events": {
+    "type": "rich_console",
+    "config": {
+      "inner": { "type": "async" },
+      "include_events": ["tool.called", "tool.succeeded", "llm.succeeded", "session.run.started", "session.run.completed"],
+      "show_payload": true
+    }
+  },
   "agents": [
     {
       "id": "concierge",

@@ -1,17 +1,19 @@
 # Examples
 
-This repository currently maintains only two example groups.
+This repository currently maintains three example groups: `quickstart`, `production_coding_agent`, and `multi_agent_support`.
 
-This is not a reduction — it reflects a deliberate decision to keep the repository focused on real, runnable, testable examples and to stop documentation from referencing deleted historical directories.
+All other historical examples are retired — the repository is deliberately focused on real, runnable, testable examples to stop documentation from referencing deleted directories.
 
-Unless noted otherwise, both examples use MiniMax's Anthropic-compatible API endpoint and require `MINIMAX_API_KEY`.
+Unless noted otherwise, examples that need a real LLM use MiniMax's Anthropic-compatible endpoint and expect `MINIMAX_API_KEY` (or equivalent `LLM_API_KEY` / `LLM_API_BASE` / `LLM_MODEL`).
 
 ## Which One to Start With
 
 - First time running the repository
   - Start with `quickstart`
-- Want a high-density, production-layered example
+- Want a high-density, production-layered *single-agent* example
   - Go to `production_coding_agent`
+- Want a complete *multi-agent* application exercising the `agent_router` seam (customer-support triage)
+  - Go to `multi_agent_support`
 - Want to learn custom plugin / seam development
   - Read [Plugin Development](plugin-development.md) first
   - Then look at `tests/fixtures/` and `examples/production_coding_agent/app/`
@@ -99,6 +101,55 @@ Related tests:
 uv run pytest -q tests/integration/test_production_coding_agent_example.py
 ```
 
+## `examples/multi_agent_support/`
+
+Purpose:
+
+- A complete multi-agent application that exercises the `agent_router` seam end-to-end
+- Customer-support triage scenario: concierge → refund_specialist / tech_support → account_lookup
+- Covers every contract in the `agent-router` spec: `delegate` / `transfer`, all three `session_isolation` modes, `max_delegation_depth` enforcement, `AgentNotFoundError`, `default_child_budget` fallback, and `metadata["handoff_from"]` propagation
+
+Key files:
+
+- `examples/multi_agent_support/agent_mock.json` — offline mock config (four agents)
+- `examples/multi_agent_support/agent_real.json` — real-LLM config (Anthropic-compatible)
+- `examples/multi_agent_support/app/deps.py` — `SupportDeps` (`CustomerStore` + `TicketStore` + `trace`)
+- `examples/multi_agent_support/app/plugins.py` — `ToolPlugin` subclasses (lookup, router-bound, action)
+- `examples/multi_agent_support/app/protocol.py` — pydantic envelopes (`CustomerIntent`, `TicketDraft`, `DelegationTraceEntry`)
+- `examples/multi_agent_support/scenarios.py` — the four scenario functions shared by demo and integration test
+- `examples/multi_agent_support/run_demo_mock.py` — offline demo (no API key)
+- `examples/multi_agent_support/run_demo_real.py` — real-LLM demo
+
+Demonstrates:
+
+- All three `agent_router.delegate` session isolation modes (shared / isolated / forked)
+- `agent_router.transfer` handoff semantics + `HandoffSignal` capture
+- Nested delegation depth propagation via `RunRequest.metadata`
+- Error paths: `DelegationDepthExceededError` and `AgentNotFoundError`
+- How to layer an app-defined protocol (deps, pydantic envelopes, trace log) on top of SDK seams
+
+Run:
+
+```bash
+# Offline mock (default CI path)
+uv run python examples/multi_agent_support/run_demo_mock.py
+```
+
+```bash
+# Real LLM (needs .env)
+cp examples/multi_agent_support/.env.example examples/multi_agent_support/.env
+# edit .env with LLM_API_KEY / LLM_API_BASE / LLM_MODEL
+uv run python examples/multi_agent_support/run_demo_real.py
+```
+
+Related tests:
+
+```bash
+uv run pytest -q tests/integration/test_multi_agent_support_example.py
+```
+
+Further reading: [multi-agent-support-example](multi-agent-support-example.en.md) — a walkthrough of the four scenarios, naming the `agent-router` spec requirement each exercises.
+
 ## Running Integration Tests
 
 All maintained examples have accompanying integration tests:
@@ -126,8 +177,9 @@ For the most effective path through this repository:
 
 1. `quickstart`
 2. `production_coding_agent`
-3. [Plugin Development](plugin-development.md)
-4. [Repository Layout](repository-layout.md)
+3. `multi_agent_support` (if your use case involves multi-agent coordination)
+4. [Plugin Development](plugin-development.md)
+5. [Repository Layout](repository-layout.md)
 
 ## research_analyst
 

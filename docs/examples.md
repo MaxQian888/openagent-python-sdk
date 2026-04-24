@@ -1,18 +1,20 @@
 # 示例说明
 
-当前仓库只保留两组维护中的 example。
+当前仓库保留三组维护中的 example：`quickstart`、`production_coding_agent`、`multi_agent_support`。
 
-这不是“缩水”，而是把仓库收回到真实、可跑、可测的维护面，避免文档继续引用已经删除的历史目录。
+其余历史示例已下线 —— 把仓库收回到真实、可跑、可测的维护面，避免文档继续引用已经删除的历史目录。
 
-除特别说明外，这两组 example 都默认使用 MiniMax 的 Anthropic-compatible 接口，
-需要 `MINIMAX_API_KEY`。
+除特别说明外，涉及真实 LLM 的 example 都默认使用 MiniMax 的 Anthropic-compatible 接口，
+需要 `MINIMAX_API_KEY`（或等价的 `LLM_API_KEY`/`LLM_API_BASE`/`LLM_MODEL`）。
 
 ## 怎么选
 
 - 第一次跑仓库
   - 先看 `quickstart`
-- 想看一个高设计密度、贴近真实应用分层的例子
+- 想看一个高设计密度、贴近真实应用分层的单 agent 例子
   - 看 `production_coding_agent`
+- 想看一个完整行使 `agent_router` seam 的多 agent 应用（客服分诊）
+  - 看 `multi_agent_support`
 - 想学自定义 plugin / seam
   - 先读 [插件开发](plugin-development.md)
   - 再看 `tests/fixtures/` 和 `examples/production_coding_agent/app/`
@@ -100,6 +102,55 @@ uv run python examples/production_coding_agent/run_benchmark.py
 uv run pytest -q tests/integration/test_production_coding_agent_example.py
 ```
 
+## `examples/multi_agent_support/`
+
+用途：
+
+- 演示一个完整行使 `agent_router` seam 的多 agent 应用
+- 客服分诊场景：concierge → refund_specialist / tech_support → account_lookup
+- 覆盖 `agent_router` 规范的每一条契约：`delegate` / `transfer`、三种 `session_isolation` 模式、`max_delegation_depth` 限制、`AgentNotFoundError`、`default_child_budget` 兜底、`metadata["handoff_from"]` 传播
+
+关键文件：
+
+- `examples/multi_agent_support/agent_mock.json` — 离线 mock 配置（四个 agent）
+- `examples/multi_agent_support/agent_real.json` — 真实 LLM 配置（Anthropic-compatible）
+- `examples/multi_agent_support/app/deps.py` — `SupportDeps`（`CustomerStore` + `TicketStore` + `trace`）
+- `examples/multi_agent_support/app/plugins.py` — `ToolPlugin` 子类（lookup、router-bound、action）
+- `examples/multi_agent_support/app/protocol.py` — pydantic 信封（`CustomerIntent`、`TicketDraft`、`DelegationTraceEntry`）
+- `examples/multi_agent_support/scenarios.py` — demo 和集成测试共享的四个场景函数
+- `examples/multi_agent_support/run_demo_mock.py` — 离线演示（无 API key）
+- `examples/multi_agent_support/run_demo_real.py` — 真实 LLM 演示
+
+展示内容：
+
+- `agent_router.delegate` 的三种 `session_isolation` 模式（shared / isolated / forked）
+- `agent_router.transfer` 的 handoff 语义 + `HandoffSignal` 捕获
+- 嵌套 delegation 的 depth 传递（通过 `RunRequest.metadata`）
+- 错误路径：`DelegationDepthExceededError` 与 `AgentNotFoundError`
+- 如何把 app-defined 协议（deps、pydantic 信封、trace 日志）叠在 SDK seam 之上
+
+运行：
+
+```bash
+# 离线 mock（CI 默认路径）
+uv run python examples/multi_agent_support/run_demo_mock.py
+```
+
+```bash
+# 真实 LLM（需要 .env）
+cp examples/multi_agent_support/.env.example examples/multi_agent_support/.env
+# 编辑 .env 填入 LLM_API_KEY / LLM_API_BASE / LLM_MODEL
+uv run python examples/multi_agent_support/run_demo_real.py
+```
+
+相关验证：
+
+```bash
+uv run pytest -q tests/integration/test_multi_agent_support_example.py
+```
+
+进一步阅读：[multi-agent-support-example](multi-agent-support-example.md) —— 四个场景逐个走，每个场景标注它行使了 `agent-router` 规范的哪条契约。
+
 ## 如果你想学自定义扩展
 
 虽然当前 repo 不再保留一堆独立 demo 目录，但”怎么自定义”并没有消失，主要参考面是：
@@ -118,8 +169,9 @@ uv run pytest -q tests/integration/test_production_coding_agent_example.py
 
 1. `quickstart`
 2. `production_coding_agent`
-3. [插件开发](plugin-development.md)
-4. [仓库结构](repository-layout.md)
+3. `multi_agent_support`（如果你的场景涉及多 agent 协作）
+4. [插件开发](plugin-development.md)
+5. [仓库结构](repository-layout.md)
 
 ## 运行集成测试
 

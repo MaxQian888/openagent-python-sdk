@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "multi_agent": {
+    "enabled": true,
+    "default_session_isolation": "isolated",
+    "max_delegation_depth": 3,
+    "default_child_budget": { "max_steps": 4, "max_cost_usd": 0.05 }
+  },
+  "events": { "type": "async" },
+  "agents": [
+    {
+      "id": "concierge",
+      "name": "Concierge",
+      "memory": { "type": "buffer" },
+      "pattern": { "type": "react", "config": { "max_steps": 2 } },
+      "llm": { "provider": "mock" },
+      "tools": [
+        {
+          "id": "delegate_to_missing",
+          "impl": "examples.multi_agent_support.app.plugins.DelegateToMissingTool"
+        }
+      ]
+    },
+    {
+      "id": "account_lookup",
+      "name": "Account Lookup",
+      "memory": { "type": "buffer" },
+      "pattern": { "type": "react", "config": { "max_steps": 1 } },
+      "llm": { "provider": "mock" },
+      "tools": []
+    }
+  ]
+}

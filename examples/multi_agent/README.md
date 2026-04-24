@@ -1,6 +1,10 @@
 # multi_agent 示例
 
-演示新的 `agent_router` seam：两种多 agent 协作模式，分别基于 `delegate`（编排）和 `transfer`（交接）。
+> **想看完整的、贴近真实业务的多 agent 应用？** 请看 [`examples/multi_agent_support/`](../multi_agent_support/) —— 那是 SDK 的多 agent 旗舰示例，覆盖 `agent_router` 规范的全部契约（三种 session 隔离、深度保护、AgentNotFoundError、handoff metadata、default_child_budget 兜底等），带完整的集成测试和文档。
+>
+> 本目录是 ~200 行的 **seam 级最小参考**，只演示 `delegate` / `transfer` 两个 API 的基本形状；不覆盖业务分层、deps 传递、错误路径等。第一次读多 agent 可以先看本示例感受 API，真要落 app 请看 `multi_agent_support`。
+
+演示 `agent_router` seam：两种多 agent 协作模式，分别基于 `delegate`（编排）和 `transfer`（交接）。
 
 ## 目录结构
 

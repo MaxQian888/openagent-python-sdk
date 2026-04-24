@@ -64,5 +64,5 @@
 
 ## 9. 提交与归档
 
-- [ ] 9.1 分批 commit（建议分组：session 可重入 / fork_session / budget / AgentNotFoundError / depth metadata / examples & docs），每 commit 附带对应 scenario 的测试
-- [ ] 9.2 `openspec archive fix-multi-agent-p0-gaps` 归档 change
+- [x] 9.1 分批 commit（commits adb98d2 session / ea0588f router / e33de02 docs / openspec-artifacts — 因 `agent_router/default.py` 与 session backends 各有跨 gap 的文件内重叠，实际落成 4 个按文件边界切的 commit 而非 6 个按 gap 切的 commit）
+- [x] 9.2 `openspec archive fix-multi-agent-p0-gaps` 归档 change

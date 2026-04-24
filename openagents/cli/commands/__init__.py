@@ -30,6 +30,8 @@ COMMANDS: list[str] = [
     "run",
     "chat",
     "dev",
+    "tools",
+    "mcp",
 ]
 """Ordered list of registered subcommand names (``-`` in display names is
 translated to ``_`` when locating the module)."""

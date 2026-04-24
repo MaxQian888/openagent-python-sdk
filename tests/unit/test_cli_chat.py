@@ -153,7 +153,7 @@ def test_chat_unknown_slash_lists_valid(tmp_path, capsys, monkeypatch, no_questi
     cli_main(["chat", str(cfg)])
     out = capsys.readouterr().out
     assert "unknown slash command" in out
-    assert "/save" in out
+    assert "/help" in out  # error message now references /help
 
 
 def test_chat_bad_config_returns_2(tmp_path, capsys):
@@ -217,3 +217,97 @@ def test_chat_empty_line_is_skipped(tmp_path, capsys, monkeypatch, no_questionar
 
 def test_last_result_as_events_with_none():
     assert chat_cmd._last_result_as_events(None) == []
+
+
+# ---------------------------------------------------------------------------
+# /help, /history, --history tests
+# ---------------------------------------------------------------------------
+
+
+def test_help_slash_prints_commands(tmp_path, capsys, monkeypatch):
+    cfg = _valid_agent(tmp_path)
+    monkeypatch.setattr("builtins.input", _Inputs(["/help", "/exit"]))
+    monkeypatch.setattr(chat_cmd, "require_or_hint", lambda _: None)
+    code = cli_main(["chat", str(cfg)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "/exit" in out
+    assert "/reset" in out
+    assert "/history" in out
+    assert "unknown slash command" not in out
+
+
+def test_history_empty_before_any_turn(tmp_path, capsys, monkeypatch):
+    cfg = _valid_agent(tmp_path)
+    monkeypatch.setattr("builtins.input", _Inputs(["/history", "/exit"]))
+    monkeypatch.setattr(chat_cmd, "require_or_hint", lambda _: None)
+    cli_main(["chat", str(cfg)])
+    out = capsys.readouterr().out
+    assert "no turns" in out.lower()
+
+
+def test_history_after_one_turn(tmp_path, capsys, monkeypatch):
+    cfg = _valid_agent(tmp_path)
+    monkeypatch.setattr("builtins.input", _Inputs(["hello", "/history", "/exit"]))
+    monkeypatch.setattr(chat_cmd, "require_or_hint", lambda _: None)
+    cli_main(["chat", str(cfg)])
+    out = capsys.readouterr().out
+    assert "turn 1" in out
+
+
+def test_history_cleared_after_reset(tmp_path, capsys, monkeypatch):
+    cfg = _valid_agent(tmp_path)
+    monkeypatch.setattr("builtins.input", _Inputs(["hello", "/reset", "/history", "/exit"]))
+    monkeypatch.setattr(chat_cmd, "require_or_hint", lambda _: None)
+    cli_main(["chat", str(cfg)])
+    out = capsys.readouterr().out
+    # After reset, /history should show "no turns yet" (not turn 1)
+    # Find text after "(session reset"
+    reset_idx = out.find("session reset")
+    post_reset = out[reset_idx:] if reset_idx >= 0 else out
+    assert "no turns" in post_reset.lower()
+
+
+def test_history_file_load_uses_session_id(tmp_path, capsys, monkeypatch):
+    cfg = _valid_agent(tmp_path)
+    history = tmp_path / "session.json"
+    history.write_text(json.dumps({"schema": 1, "session_id": "myses-abc", "events": []}))
+    monkeypatch.setattr("builtins.input", _Inputs(["/exit"]))
+    monkeypatch.setattr(chat_cmd, "require_or_hint", lambda _: None)
+    code = cli_main(["chat", str(cfg), "--history", str(history)])
+    assert code == 0
+    err = capsys.readouterr().err
+    assert "myses-abc" in err
+
+
+def test_history_file_not_found_exits_1(tmp_path, capsys):
+    cfg = _valid_agent(tmp_path)
+    code = cli_main(["chat", str(cfg), "--history", "/nonexistent/session.json"])
+    assert code == 1
+    assert "not found" in capsys.readouterr().err
+
+
+def test_history_file_malformed_exits_1(tmp_path, capsys):
+    cfg = _valid_agent(tmp_path)
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not valid json")
+    code = cli_main(["chat", str(cfg), "--history", str(bad)])
+    assert code == 1
+
+
+def test_history_file_missing_session_id_exits_1(tmp_path, capsys):
+    cfg = _valid_agent(tmp_path)
+    f = tmp_path / "nosid.json"
+    f.write_text(json.dumps({"schema": 1, "events": []}))
+    code = cli_main(["chat", str(cfg), "--history", str(f)])
+    assert code == 1
+    assert "session_id" in capsys.readouterr().err
+
+
+def test_history_and_session_id_conflict_exits_1(tmp_path, capsys):
+    cfg = _valid_agent(tmp_path)
+    f = tmp_path / "h.json"
+    f.write_text(json.dumps({"schema": 1, "session_id": "s", "events": []}))
+    code = cli_main(["chat", str(cfg), "--history", str(f), "--session-id", "other"])
+    assert code == 1
+    assert "mutually exclusive" in capsys.readouterr().err

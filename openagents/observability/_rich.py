@@ -84,10 +84,47 @@ def _render_value(v: Any, depth: int = 0) -> Any:
     return Text(repr(v), style="dim")
 
 
+_EVENT_NAME_STYLE: dict[str, str] = {
+    "session.run.started": "bold cyan",
+    "session.run.completed": "bold cyan",
+    "llm.called": "bold blue",
+    "llm.succeeded": "bold blue",
+    "llm.failed": "bold red",
+    "tool.called": "bold green",
+    "tool.succeeded": "bold green",
+    "tool.failed": "bold red",
+    "tool.retry_requested": "bold yellow",
+    "budget.cost_skipped": "bold yellow",
+    "budget.exhausted": "bold red",
+    "validation.retry": "bold yellow",
+    "artifact.emitted": "bold magenta",
+    "usage.updated": "bold blue",
+}
+
+_KEY_STYLE = "dim"
+_VALUE_STYLE = "white"
+_VALUE_TRUNCATE = 60
+
+
+def _event_name_style(name: str) -> str:
+    if name in _EVENT_NAME_STYLE:
+        return _EVENT_NAME_STYLE[name]
+    prefix = name.split(".")[0]
+    return {
+        "session": "bold cyan",
+        "llm": "bold blue",
+        "tool": "bold green",
+        "budget": "bold yellow",
+        "validation": "bold yellow",
+        "artifact": "bold magenta",
+        "usage": "bold blue",
+    }.get(prefix, "bold white")
+
+
 def render_event_row(event: Any, *, show_payload: bool) -> Any:
     """Render a RuntimeEvent into a rich Renderable.
 
-    - show_payload=False: single-line Text "ts  name  key=val ..."
+    - show_payload=False: single-line Text "name  key=val ..." with per-event colors
     - show_payload=True: Panel with expanded per-field rows; dicts and
       lists are recursively expanded, strings rendered without repr quotes.
     """
@@ -101,12 +138,19 @@ def render_event_row(event: Any, *, show_payload: bool) -> Any:
 
     if not show_payload:
         line = Text()
-        line.append(f"{name}  ", style="bold")
-        for i, (k, v) in enumerate(payload.items()):
-            if i > 0:
-                line.append(" ")
-            line.append(f"{k}=")
-            line.append(repr(v) if not isinstance(v, str) else v[:120])
+        line.append(f"{name}", style=_event_name_style(name))
+        for k, v in payload.items():
+            if k.startswith("_"):
+                continue
+            if k in ("session_id", "run_id"):
+                continue
+            if v is None or v == {} or v == []:
+                continue
+            line.append("  ")
+            line.append(f"{k}=", style=_KEY_STYLE)
+            raw = repr(v) if not isinstance(v, str) else v
+            display = raw if len(raw) <= _VALUE_TRUNCATE else raw[:_VALUE_TRUNCATE] + "…"
+            line.append(display, style=_VALUE_STYLE)
         return line
 
     table = Table.grid(padding=(0, 1))
@@ -114,4 +158,4 @@ def render_event_row(event: Any, *, show_payload: bool) -> Any:
     table.add_column()
     for k, v in payload.items():
         table.add_row(f"{k} =", _render_value(v))
-    return Panel(table, title=name, title_align="left")
+    return Panel(table, title=Text(name, style=_event_name_style(name)), title_align="left")

@@ -43,6 +43,10 @@ otel = [
 rich = [
     "rich>=13.7.0",
 ]
+screenshot = [
+    "io-openagent-sdk[rich]",
+    "playwright>=1.40.0",
+]
 sqlite = [
     "aiosqlite>=0.20.0",
 ]

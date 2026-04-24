@@ -267,3 +267,171 @@ def test_run_config_error_during_runtime_construction_returns_2(tmp_path, capsys
     monkeypatch.setattr(Runtime, "from_config", staticmethod(_raise))
     code = cli_main(["run", str(cfg), "--input", "hi"])
     assert code == 2
+
+
+# ---------------------------------------------------------------------------
+# --dry-run tests
+# ---------------------------------------------------------------------------
+
+
+def test_dry_run_valid_config_exits_0(tmp_path, capsys):
+    cfg = _valid_agent(tmp_path)
+    code = cli_main(["run", str(cfg), "--dry-run"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "dry-run OK" in out
+    assert "agent" in out
+
+
+def test_dry_run_no_input_still_exits_0(tmp_path, capsys):
+    """--dry-run does not require --input."""
+    cfg = _valid_agent(tmp_path)
+    code = cli_main(["run", str(cfg), "--dry-run"])
+    assert code == 0
+
+
+def test_dry_run_bad_config_exits_2(tmp_path, capsys):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not valid json")
+    code = cli_main(["run", str(bad), "--dry-run"])
+    assert code == 2
+
+
+def test_dry_run_runtime_from_config_failure_exits_2(tmp_path, capsys, monkeypatch):
+    cfg = _valid_agent(tmp_path)
+    from openagents.errors.exceptions import ConfigLoadError
+    from openagents.runtime.runtime import Runtime
+
+    def _raise(path):
+        raise ConfigLoadError("fabricated")
+
+    monkeypatch.setattr(Runtime, "from_config", staticmethod(_raise))
+    code = cli_main(["run", str(cfg), "--dry-run"])
+    assert code == 2
+
+
+# ---------------------------------------------------------------------------
+# --timeout tests
+# ---------------------------------------------------------------------------
+
+
+def test_timeout_exceeded_exits_3(tmp_path, capsys, monkeypatch):
+    import asyncio
+
+    cfg = _valid_agent(tmp_path)
+
+    async def _hang(*_a, **_kw):
+        await asyncio.sleep(9999)
+
+    from openagents.cli.commands import run as run_cmd
+
+    monkeypatch.setattr(run_cmd, "_run_once", _hang)
+    code = cli_main(["run", str(cfg), "--input", "hi", "--timeout", "0.01"])
+    assert code == 3
+    assert "TimeoutError" in capsys.readouterr().err
+
+
+def test_timeout_not_exceeded_exits_0(tmp_path, capsys):
+    cfg = _valid_agent(tmp_path)
+    code = cli_main(["run", str(cfg), "--input", "hi", "--timeout", "60", "--no-stream"])
+    assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# --batch tests
+# ---------------------------------------------------------------------------
+
+
+def _write_batch(tmp_path: Path, inputs: list) -> Path:
+    p = tmp_path / "inputs.jsonl"
+    lines = []
+    for item in inputs:
+        if isinstance(item, str):
+            lines.append(json.dumps(item))
+        else:
+            lines.append(json.dumps(item))
+    p.write_text("\n".join(lines))
+    return p
+
+
+def test_batch_serial_3_inputs(tmp_path, capsys):
+    cfg = _valid_agent(tmp_path)
+    batch = _write_batch(
+        tmp_path,
+        [
+            {"input_text": "hello"},
+            {"input_text": "world"},
+            {"input_text": "foo"},
+        ],
+    )
+    code = cli_main(["run", str(cfg), "--batch", str(batch)])
+    assert code == 0
+    out = capsys.readouterr().out
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    assert len(lines) == 3
+    for i, ln in enumerate(lines):
+        obj = json.loads(ln)
+        assert obj["index"] == i
+        assert "output" in obj
+        assert "latency_ms" in obj
+
+
+def test_batch_plain_string_lines(tmp_path, capsys):
+    cfg = _valid_agent(tmp_path)
+    batch = _write_batch(tmp_path, ["hello", "world"])
+    code = cli_main(["run", str(cfg), "--batch", str(batch)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert len([ln for ln in out.splitlines() if ln.strip()]) == 2
+
+
+def test_batch_exit_3_on_partial_failure(tmp_path, capsys, monkeypatch):
+    cfg = _valid_agent(tmp_path)
+    batch = _write_batch(tmp_path, [{"input_text": "ok"}, {"input_text": "boom"}])
+    call_count = [0]
+
+    from openagents.cli.commands import run as run_cmd
+
+    orig = run_cmd._run_once
+
+    async def _maybe_fail(runtime, *, agent_id, session_id, input_text, deps=None):
+        call_count[0] += 1
+        if input_text == "boom":
+            raise RuntimeError("injected failure")
+        return await orig(runtime, agent_id=agent_id, session_id=session_id, input_text=input_text, deps=deps)
+
+    monkeypatch.setattr(run_cmd, "_run_once", _maybe_fail)
+    code = cli_main(["run", str(cfg), "--batch", str(batch)])
+    assert code == 3
+    out = capsys.readouterr().out
+    lines = [json.loads(ln) for ln in out.splitlines() if ln.strip()]
+    errors = [ln for ln in lines if ln["error"] is not None]
+    assert len(errors) == 1
+
+
+def test_batch_mutual_exclusive_with_input(tmp_path, capsys):
+    import pytest
+
+    cfg = _valid_agent(tmp_path)
+    batch = tmp_path / "b.jsonl"
+    batch.write_text('{"input_text": "hi"}')
+    # argparse mutual exclusion raises SystemExit(2)
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main(["run", str(cfg), "--batch", str(batch), "--input", "hi"])
+    assert exc_info.value.code != 0
+
+
+def test_batch_file_not_found(tmp_path, capsys):
+    cfg = _valid_agent(tmp_path)
+    code = cli_main(["run", str(cfg), "--batch", "/nonexistent/inputs.jsonl"])
+    assert code in (1, 3)
+    assert "not found" in capsys.readouterr().err
+
+
+def test_batch_stderr_summary_present(tmp_path, capsys):
+    cfg = _valid_agent(tmp_path)
+    batch = _write_batch(tmp_path, [{"input_text": "hi"}])
+    cli_main(["run", str(cfg), "--batch", str(batch)])
+    err = capsys.readouterr().err
+    assert "Batch:" in err
+    assert "p50=" in err

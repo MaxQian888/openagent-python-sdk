@@ -70,3 +70,41 @@ def test_multi_agent_config_defaults():
     assert m.enabled is False
     assert m.default_session_isolation == "isolated"
     assert m.max_delegation_depth == 5
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Capability constant + RunContext field
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock  # noqa: E402
+
+from openagents.interfaces.capabilities import AGENT_ROUTER_DELEGATE, KNOWN_CAPABILITIES  # noqa: E402
+from openagents.interfaces.run_context import RunContext  # noqa: E402
+
+
+def test_agent_router_delegate_capability_registered():
+    assert AGENT_ROUTER_DELEGATE == "agent_router.delegate"
+    assert AGENT_ROUTER_DELEGATE in KNOWN_CAPABILITIES
+
+
+def test_run_context_accepts_agent_router_none():
+    ctx = RunContext(
+        agent_id="a",
+        session_id="s",
+        input_text="hi",
+        event_bus=MagicMock(),
+        agent_router=None,
+    )
+    assert ctx.agent_router is None
+
+
+def test_run_context_accepts_agent_router_instance():
+    mock_router = MagicMock()
+    ctx = RunContext(
+        agent_id="a",
+        session_id="s",
+        input_text="hi",
+        event_bus=MagicMock(),
+        agent_router=mock_router,
+    )
+    assert ctx.agent_router is mock_router

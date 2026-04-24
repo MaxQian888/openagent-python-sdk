@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 import re
 import sys
@@ -41,6 +42,7 @@ from .persistence import (
     save_project,
 )
 from .state import DeckProject
+from .wizard._layout import LayoutRenderer, LogRing, RingLogHandler, repaint
 from .wizard.compile_qa import CompileQAWizardStep
 from .wizard.env import EnvDoctorWizardStep
 from .wizard.intent import IntentWizardStep
@@ -210,19 +212,40 @@ async def run_wizard(
         ),
     ]
 
-    wizard = Wizard(steps=steps, project=project)
+    # Layout chrome: wire LayoutRenderer + LogRing into every step so repaint() produces output.
+    log_ring = LogRing(max_lines=5)
+    renderer = LayoutRenderer(project=project)
+    _log_handler = RingLogHandler(ring=log_ring)
+    _log_handler.setFormatter(logging.Formatter("%(name)s %(message)s"))
+    _pptx_logger = logging.getLogger("examples.pptx_generator")
+    _pptx_logger.addHandler(_log_handler)
+    for step in steps:
+        step.layout = renderer
+        step.log_ring = log_ring
+
+    try:
+        from rich.console import Console as _RichConsole
+
+        _console: Any = _RichConsole()
+    except ImportError:  # pragma: no cover
+        _console = None
+
+    repaint(_console, renderer, project)
+    wizard = Wizard(steps=steps, project=project, console=_console)
     try:
         if resume:
             outcome = await wizard.resume(from_step=project.stage)
         else:
             outcome = await wizard.run()
     except KeyboardInterrupt:
+        repaint(_console, renderer, project)
         save_project(project, root=outputs)
         print(
             f"\ninterrupted; state saved. resume with: pptx-agent resume {project.slug}",
         )
         return 130
     finally:
+        _pptx_logger.removeHandler(_log_handler)
         if prior_log is None:
             os.environ.pop("PPTX_EVENTS_LOG", None)
     save_project(project, root=outputs)

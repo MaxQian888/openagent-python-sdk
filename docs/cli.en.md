@@ -24,11 +24,16 @@ subcommand raises `ImportError` at the user.
 | `openagents config show <path>` | Print the fully-resolved `AppConfig` |
 | `openagents init <name>` | Scaffold a new project from a template |
 | `openagents new plugin <seam> <name>` | Scaffold a plugin skeleton + test stub |
-| `openagents run <path>` | Execute one single-shot turn |
+| `openagents run <path>` | Execute one single-shot turn; supports `--dry-run`, `--timeout`, `--batch` |
 | `openagents chat <path>` | Interactive multi-turn REPL |
 | `openagents dev <path>` | Reload runtime on config change |
 | `openagents replay <path>` | Re-render a persisted transcript |
 | `openagents completion <shell>` | Emit a shell-completion script |
+| `openagents tools list --config <path>` | List tools registered for an agent |
+| `openagents tools call --config <path> <id>` | Invoke a tool directly (no LLM) |
+| `openagents mcp list --config <path>` | List MCP servers in the config |
+| `openagents mcp ping <url>` | Test MCP server connectivity |
+| `openagents mcp tools <url>` | List tools exposed by an MCP server |
 
 `openagents --version` / `-V` is equivalent to `openagents version`.
 
@@ -77,16 +82,30 @@ Built-in slash commands:
 
 | Command | Behaviour |
 | --- | --- |
+| `/help` | List all available slash commands |
 | `/exit`, `/quit` | Clean exit (code `0`) |
 | `/reset` | Rotate the `session_id` and drop context |
 | `/save <path>` | Dump the last turn to JSON; re-readable by `openagents replay` |
 | `/context` | Print the previous turn's `final_output` and `stop_reason` |
 | `/tools` | List the agent's tool IDs and types |
+| `/history` | Show all completed turns in the current session |
+
+Resume a saved session with `--history`:
+
+```bash
+openagents chat agent.json --history ./last_session.json
+```
 
 ### Hot reload
 
 ```bash
 openagents dev agent.json
+
+# Also watch plugin files
+openagents dev agent.json --watch-also "plugins/**/*.py"
+
+# Run a probe request after each reload (uses real LLM — costs API credits)
+openagents dev agent.json --test-prompt "hello"
 ```
 
 Internally calls `Runtime.reload()`. **Note:** per the kernel contract,
@@ -95,6 +114,47 @@ plugins — restart the process for those.
 
 Uses `watchdog` when available; falls back to `--poll-interval` polling
 otherwise.
+
+### Batch execution
+
+```bash
+# inputs.jsonl: each line is {"input_text": "..."} or a plain JSON string
+openagents run agent.json --batch inputs.jsonl
+
+# Pipe to jq (stdout is pure JSONL)
+openagents run agent.json --batch inputs.jsonl | jq -c .
+
+# Concurrent execution (watch API rate limits)
+openagents run agent.json --batch inputs.jsonl --concurrency 3
+```
+
+`--concurrency` defaults to **1** (serial). Results stream to stdout; a summary line (p50/p95 latency) goes to stderr.
+
+### CI / dry-run validation
+
+```bash
+# Verify agent.json loads and plugins instantiate — no LLM call (exit 0 = ready)
+openagents run agent.json --dry-run
+```
+
+### Tool and MCP debugging
+
+```bash
+# List tools registered for an agent
+openagents tools list --config agent.json
+
+# Invoke a tool directly (bypass LLM)
+openagents tools call --config agent.json my_tool '{"input": "hello"}'
+
+# List MCP servers in config
+openagents mcp list --config agent.json
+
+# Test MCP server connectivity
+openagents mcp ping http://localhost:3000/mcp
+
+# List tools exposed by an MCP server
+openagents mcp tools http://localhost:3000/mcp
+```
 
 ### Replay a transcript
 

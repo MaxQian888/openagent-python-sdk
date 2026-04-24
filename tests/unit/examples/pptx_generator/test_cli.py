@@ -293,3 +293,127 @@ async def test_slugify_from_topic_creates_unique_slug(monkeypatch, tmp_path):
     slug = captured["slug"]
     assert slug.startswith("my-awesome-deck-")
     assert all(c.isalnum() or c in "-_" for c in slug)
+
+
+# ---------------------------------------------------------------------------
+# Layout chrome wiring tests (task 3.1 – 3.3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_wizard_passes_layout_renderer_to_every_step(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every WizardStep must receive a LayoutRenderer and LogRing (task 3.1)."""
+    from examples.pptx_generator.wizard._layout import LayoutRenderer, LogRing
+
+    monkeypatch.setenv("PPTX_AGENT_OUTPUTS", str(tmp_path))
+    captured_steps: list[Any] = []
+
+    class SpyWizard:
+        def __init__(self, *a: Any, **kw: Any) -> None:
+            captured_steps.extend(kw.get("steps") or (a[0] if a else []))
+
+        async def run(self) -> str:
+            return "completed"
+
+        async def resume(self, from_step: str) -> str:
+            return "completed"
+
+    monkeypatch.setattr("examples.pptx_generator.cli.Wizard", SpyWizard)
+    project = DeckProject(
+        slug="layout-steps",
+        created_at=datetime(2026, 4, 25, tzinfo=timezone.utc),
+        stage="intent",
+    )
+    rc = await cli.run_wizard(
+        project, runtime=SimpleNamespace(run=AsyncMock()), shell_tool=SimpleNamespace(invoke=AsyncMock())
+    )
+    assert rc == 0
+    assert len(captured_steps) == 7, f"expected 7 steps, got {len(captured_steps)}"
+    for step in captured_steps:
+        assert isinstance(step.layout, LayoutRenderer), f"{step!r}.layout is {step.layout!r}"
+        assert isinstance(step.log_ring, LogRing), f"{step!r}.log_ring is {step.log_ring!r}"
+
+
+@pytest.mark.asyncio
+async def test_run_wizard_attaches_and_detaches_ring_log_handler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RingLogHandler must be attached during the run and removed afterward (task 3.2)."""
+    import logging
+
+    from examples.pptx_generator.wizard._layout import RingLogHandler
+
+    monkeypatch.setenv("PPTX_AGENT_OUTPUTS", str(tmp_path))
+    handler_present_during_run: list[bool] = []
+
+    class SpyWizard:
+        def __init__(self, *a: Any, **kw: Any) -> None:
+            pass
+
+        async def run(self) -> str:
+            logger = logging.getLogger("examples.pptx_generator")
+            handler_present_during_run.append(any(isinstance(h, RingLogHandler) for h in logger.handlers))
+            return "completed"
+
+        async def resume(self, from_step: str) -> str:
+            return await self.run()
+
+    monkeypatch.setattr("examples.pptx_generator.cli.Wizard", SpyWizard)
+    logger = logging.getLogger("examples.pptx_generator")
+    handlers_before = list(logger.handlers)
+
+    project = DeckProject(
+        slug="handler-wiring",
+        created_at=datetime(2026, 4, 25, tzinfo=timezone.utc),
+        stage="intent",
+    )
+    await cli.run_wizard(
+        project, runtime=SimpleNamespace(run=AsyncMock()), shell_tool=SimpleNamespace(invoke=AsyncMock())
+    )
+
+    # Handler was present during the wizard run
+    assert handler_present_during_run == [True]
+    # No new RingLogHandler remains after the call
+    new_ring_handlers = [h for h in logger.handlers if isinstance(h, RingLogHandler) and h not in handlers_before]
+    assert not new_ring_handlers, f"leaked handlers: {new_ring_handlers}"
+
+
+@pytest.mark.asyncio
+async def test_keyboard_interrupt_repaints_before_resume_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """repaint() must be called in the KeyboardInterrupt path before the hint (task 3.3)."""
+    monkeypatch.setenv("PPTX_AGENT_OUTPUTS", str(tmp_path))
+    repaint_calls: list[dict[str, Any]] = []
+
+    def spy_repaint(console: Any, renderer: Any, project: Any) -> None:
+        repaint_calls.append({"renderer": renderer, "project": project})
+
+    monkeypatch.setattr("examples.pptx_generator.cli.repaint", spy_repaint)
+
+    class InterruptingWizard:
+        def __init__(self, *a: Any, **kw: Any) -> None:
+            pass
+
+        async def run(self) -> None:
+            raise KeyboardInterrupt
+
+        async def resume(self, from_step: str) -> None:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("examples.pptx_generator.cli.Wizard", InterruptingWizard)
+
+    project = DeckProject(
+        slug="repaint-kb",
+        created_at=datetime(2026, 4, 25, tzinfo=timezone.utc),
+        stage="intent",
+    )
+    rc = await cli.run_wizard(
+        project, runtime=SimpleNamespace(run=AsyncMock()), shell_tool=SimpleNamespace(invoke=AsyncMock())
+    )
+
+    assert rc == 130
+    # Initial render + KeyboardInterrupt repaint = at least 2 calls
+    assert len(repaint_calls) >= 2, f"repaint called only {len(repaint_calls)} time(s)"
+    captured = capsys.readouterr()
+    assert "resume with" in captured.out

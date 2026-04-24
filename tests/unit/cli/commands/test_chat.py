@@ -153,7 +153,7 @@ def test_chat_unknown_slash_lists_valid(tmp_path, capsys, monkeypatch, no_questi
     cli_main(["chat", str(cfg)])
     out = capsys.readouterr().out
     assert "unknown slash command" in out
-    assert "/save" in out
+    assert "/help" in out  # error message now references /help
 
 
 def test_chat_bad_config_returns_2(tmp_path, capsys):

@@ -17,7 +17,7 @@
         "session.run.started",
         "session.run.completed"
       ],
-      "show_payload": false,
+      "show_payload": true,
       "redact_keys": ["api_key", "authorization"]
     }
   },

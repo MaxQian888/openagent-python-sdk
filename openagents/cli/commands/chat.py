@@ -33,6 +33,17 @@ from openagents.errors.exceptions import ConfigError
 from openagents.interfaces.runtime import RunRequest
 from openagents.runtime.runtime import Runtime
 
+_HELP_TEXT = """\
+Available slash commands:
+  /help              show this help
+  /exit  /quit       exit the REPL (exit code 0)
+  /reset             start a new session (rotates session_id)
+  /save <path>       save the last turn result to a JSON file (readable by 'openagents replay')
+  /context           show the last turn's final_output and stop_reason
+  /tools             list tool ids and types registered for this agent
+  /history           show all completed turns in the current session
+"""
+
 
 def _select_agent(cfg, requested: str | None) -> tuple[str | None, str | None]:
     if requested:
@@ -106,28 +117,33 @@ def _dispatch_slash(
     agent_id: str,
     session_id: str,
     last_result: Any | None,
+    turns: list[dict[str, Any]],
     console_out,
-) -> tuple[bool, str]:
-    """Return ``(should_exit, new_session_id)``.
+) -> tuple[bool, str, list[dict[str, Any]]]:
+    """Return ``(should_exit, new_session_id, turns)``.
 
     Slash commands are handled in-line; the caller passes the current
     session id and receives a (possibly rotated) one back so ``/reset``
-    works transparently.
+    works transparently. ``turns`` is passed through and may be cleared
+    on ``/reset``.
     """
     parts = line.strip().split(maxsplit=1)
     cmd = parts[0].lower()
     arg = parts[1] if len(parts) > 1 else ""
 
+    if cmd == "/help":
+        console_out.write(_HELP_TEXT)
+        return False, session_id, turns
     if cmd in ("/exit", "/quit"):
-        return True, session_id
+        return True, session_id, turns
     if cmd == "/reset":
         new_sid = f"cli-chat-{uuid.uuid4().hex[:8]}"
         console_out.write(f"(session reset → {new_sid})\n")
-        return False, new_sid
+        return False, new_sid, []
     if cmd == "/save":
         if not arg:
             console_out.write("usage: /save <path>\n")
-            return False, session_id
+            return False, session_id, turns
         path = Path(arg)
         envelope = {
             "schema": 1,
@@ -137,13 +153,13 @@ def _dispatch_slash(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(envelope, indent=2, ensure_ascii=False), encoding="utf-8")
         console_out.write(f"(saved → {path})\n")
-        return False, session_id
+        return False, session_id, turns
     if cmd == "/context":
         if last_result is None:
             console_out.write("(no previous turn yet)\n")
         else:
             console_out.write(f"final_output: {last_result.final_output}\nstop_reason : {last_result.stop_reason}\n")
-        return False, session_id
+        return False, session_id, turns
     if cmd == "/tools":
         rows = _list_tools(runtime, agent_id)
         if not rows:
@@ -151,9 +167,16 @@ def _dispatch_slash(
         else:
             for row in rows:
                 console_out.write(f"  {row['id']:<20} ({row['type']})\n")
-        return False, session_id
-    console_out.write(f"unknown slash command: {cmd}. Try /exit, /reset, /save <path>, /context, /tools\n")
-    return False, session_id
+        return False, session_id, turns
+    if cmd == "/history":
+        if not turns:
+            console_out.write("(no turns yet)\n")
+        else:
+            for t in turns:
+                console_out.write(f"  turn {t['turn']} | {t['stop_reason']} | {t['preview']}\n")
+        return False, session_id, turns
+    console_out.write(f"unknown slash command: {cmd}. Type /help for available commands.\n")
+    return False, session_id, turns
 
 
 def _last_result_as_events(result: Any | None) -> list[dict[str, Any]]:
@@ -182,6 +205,7 @@ async def _chat_loop(
 ) -> int:
     last_result: Any | None = None
     current_session = session_id
+    turns: list[dict[str, Any]] = []
     while True:
         line = _prompt(question_module, "you> ")
         if line is None:
@@ -191,12 +215,13 @@ async def _chat_loop(
         if not stripped:
             continue
         if stripped.startswith("/"):
-            should_exit, current_session = _dispatch_slash(
+            should_exit, current_session, turns = _dispatch_slash(
                 stripped,
                 runtime=runtime,
                 agent_id=agent_id,
                 session_id=current_session,
                 last_result=last_result,
+                turns=turns,
                 console_out=console_out,
             )
             if should_exit:
@@ -213,7 +238,31 @@ async def _chat_loop(
             console_out.write(f"[runtime error] {type(exc).__name__}: {exc}\n")
             continue
         last_result = result
+        turns.append(
+            {
+                "turn": len(turns) + 1,
+                "stop_reason": str(getattr(result, "stop_reason", "")),
+                "preview": str(result.final_output or "")[:80],
+            }
+        )
         console_out.write(f"agent> {result.final_output}\n")
+
+
+def _load_history_session(path: str) -> tuple[str | None, str | None]:
+    """Return ``(session_id, error_message)`` from a /save JSON file."""
+    from pathlib import Path as _Path
+
+    p = _Path(path)
+    if not p.exists():
+        return None, f"history file not found: {path}"
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, f"failed to parse history file: {exc}"
+    sid = data.get("session_id") if isinstance(data, dict) else None
+    if not sid:
+        return None, f"history file missing 'session_id' field: {path}"
+    return str(sid), None
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
@@ -230,11 +279,24 @@ def add_parser(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParse
         default=None,
         help="reuse an explicit session id (default: auto-generated UUID)",
     )
+    p.add_argument(
+        "--history",
+        dest="history_file",
+        default=None,
+        metavar="FILE",
+        help="resume a previously saved session (JSON file produced by /save); mutually exclusive with --session-id",
+    )
     p.set_defaults(func=run)
     return p
 
 
 def run(args: argparse.Namespace) -> int:
+    # Mutual exclusion: --history and --session-id
+    history_file = getattr(args, "history_file", None)
+    if history_file and args.session_id:
+        print("--history and --session-id are mutually exclusive", file=sys.stderr)
+        return EXIT_USAGE
+
     try:
         cfg = load_config(args.path)
     except ConfigError as exc:
@@ -246,7 +308,15 @@ def run(args: argparse.Namespace) -> int:
         print(err, file=sys.stderr)
         return EXIT_USAGE
 
-    session_id = args.session_id or f"cli-chat-{uuid.uuid4().hex[:8]}"
+    if history_file:
+        loaded_sid, load_err = _load_history_session(history_file)
+        if load_err is not None:
+            print(load_err, file=sys.stderr)
+            return EXIT_USAGE
+        session_id = loaded_sid or f"cli-chat-{uuid.uuid4().hex[:8]}"
+        print(f"resuming session {session_id} from {history_file}", file=sys.stderr)
+    else:
+        session_id = args.session_id or f"cli-chat-{uuid.uuid4().hex[:8]}"
     try:
         runtime = Runtime.from_config(args.path)
     except ConfigError as exc:

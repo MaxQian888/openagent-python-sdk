@@ -22,11 +22,16 @@ pip install 'io-openagent-sdk[cli]'     # 或 uv sync --extra cli
 | `openagents config show <path>` | 打印解析后的完整 `AppConfig`，支持 `--redact` |
 | `openagents init <name>` | 从内置模板脚手架新项目 |
 | `openagents new plugin <seam> <name>` | 生成 plugin 骨架 + 单测 stub |
-| `openagents run <path>` | 执行一次单轮对话 |
+| `openagents run <path>` | 执行一次单轮对话；支持 `--dry-run`、`--timeout`、`--batch` |
 | `openagents chat <path>` | 交互式多轮 REPL |
 | `openagents dev <path>` | 配置文件变更时自动 `Runtime.reload()` |
 | `openagents replay <path>` | 复放一段会话事件 / transcript |
 | `openagents completion <shell>` | 为 bash/zsh/fish/powershell 生成补全脚本 |
+| `openagents tools list --config <path>` | 列出 agent 已注册的 tool（id、type、描述） |
+| `openagents tools call --config <path> <tool_id>` | 直接调用一个 tool（不走 LLM） |
+| `openagents mcp list --config <path>` | 列出配置中的 MCP server |
+| `openagents mcp ping <url>` | 测试 MCP server 连通性 |
+| `openagents mcp tools <url>` | 列出 MCP server 暴露的 tool |
 
 `openagents --version` / `-V` 等价于 `openagents version`。
 
@@ -75,16 +80,30 @@ openagents chat agent.json
 
 | 命令 | 说明 |
 | --- | --- |
+| `/help` | 列出所有可用斜杠命令 |
 | `/exit` / `/quit` | 退出 REPL（退出码 0） |
 | `/reset` | 轮换 session_id，清空上下文 |
 | `/save <path>` | 把最近一轮结果保存为 JSON（可被 `openagents replay` 读取） |
 | `/context` | 打印上一轮的 `final_output` / `stop_reason` |
 | `/tools` | 列出当前 agent 的 tool id 和类型 |
+| `/history` | 列出当前 session 所有已完成轮次的摘要 |
+
+`--history FILE` 可从 `/save` 保存的文件恢复 session（复用 session_id）：
+
+```bash
+openagents chat agent.json --history ./last_session.json
+```
 
 ### 开发态热重载
 
 ```bash
 openagents dev agent.json
+
+# 同时监听插件文件变更
+openagents dev agent.json --watch-also "plugins/**/*.py"
+
+# 每次 reload 后自动运行 probe 请求（注意：会消耗 LLM API 额度）
+openagents dev agent.json --test-prompt "hello"
 ```
 
 内部调用 `Runtime.reload()`。**注意**：按照 kernel 约束，`dev` **不会**
@@ -92,6 +111,50 @@ openagents dev agent.json
 整体组件请重启进程。
 
 安装了 `watchdog` 时使用事件驱动；否则退化到 `--poll-interval` 秒级轮询。
+
+### 批量执行
+
+```bash
+# inputs.jsonl 每行：{"input_text": "..."} 或纯字符串
+openagents run agent.json --batch inputs.jsonl
+
+# 输出是纯 JSONL，可直接 pipe 进 jq
+openagents run agent.json --batch inputs.jsonl | jq -c .
+
+# 并发执行（注意 API rate limit）
+openagents run agent.json --batch inputs.jsonl --concurrency 3
+
+# 结合 --timeout 保护单条 run
+openagents run agent.json --batch inputs.jsonl --timeout 30
+```
+
+`--concurrency` 默认值为 **1**（串行），保护 API rate limit。每条结果实时写入 stdout；摘要行（p50/p95 延迟）写入 stderr。
+
+### CI / 空跑校验
+
+```bash
+# 验证 agent.json 可以加载、plugin 可以实例化，不调 LLM（exit 0 = 可以运行）
+openagents run agent.json --dry-run
+```
+
+### 工具层调试
+
+```bash
+# 列出 agent 注册的 tool
+openagents tools list --config agent.json
+
+# 直接调用一个 tool（不走 LLM）
+openagents tools call --config agent.json my_tool '{"input": "hello"}'
+
+# 列出配置中的 MCP server
+openagents mcp list --config agent.json
+
+# 测试 MCP server 连通性
+openagents mcp ping http://localhost:3000/mcp
+
+# 列出 MCP server 暴露的 tool
+openagents mcp tools http://localhost:3000/mcp
+```
 
 ### 复放一段历史
 

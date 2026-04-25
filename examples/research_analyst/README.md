@@ -1,21 +1,38 @@
-# research_analyst example
+# research_analyst
 
-Offline research agent that exercises the post seam-consolidation (2026-04-18) extension model:
+Offline research agent that exercises the post seam-consolidation (2026-04-18) extension model.
 
-| 机制 | 实现 | 位置 |
+[中文文档](README.zh.md)
+
+| Mechanism | Implementation | Location |
 |---|---|---|
-| custom tool_executor with multi-policy + retry | `SandboxedResearchExecutor` (`evaluate_policy()` combines filesystem + network allowlist via `CompositePolicy`; `execute()` delegates to `RetryToolExecutor(inner=SafeToolExecutor)`) | `app/executor.py` |
-| pattern-subclass follow-up resolution | `FollowupFirstReActPattern` overrides `ReActPattern.resolve_followup()` with rule-based regex → template matching | `app/followup_pattern.py` + `app/followup_rules.json` |
-| session | `jsonl_file` builtin | `agent.json` + `./sessions` |
-| events | `file_logging` builtin | `agent.json` + `./sessions/events.ndjson` |
+| Custom `tool_executor` with multi-policy + retry | `SandboxedResearchExecutor` — `evaluate_policy()` combines filesystem + network allowlist via `CompositePolicy`; `execute()` delegates to `RetryToolExecutor(inner=SafeToolExecutor)` | `app/executor.py` |
+| Pattern-subclass follow-up resolution | `FollowupFirstReActPattern` overrides `ReActPattern.resolve_followup()` with rule-based regex → template matching | `app/followup_pattern.py` + `app/followup_rules.json` |
+| Session | `jsonl_file` builtin | `agent.json` + `./sessions` |
+| Events | `file_logging` builtin | `agent.json` + `./sessions/events.ndjson` |
 
-## Run
+## Quick start (dev environment)
+
+No real API key or network access is required — the demo spins up an
+`aiohttp` stub server on `127.0.0.1` that serves all web content locally.
 
 ```bash
+# 1. Install dependencies
+uv sync
+
+# 2. Run the demo
 uv run python examples/research_analyst/run_demo.py
 ```
 
-No external network is required; an aiohttp stub server on 127.0.0.1 serves all web content.
+## Testing
+
+```bash
+# Unit tests (stub server + follow-up pattern, no external services)
+uv run pytest -q tests/unit/examples/research_analyst/
+
+# End-to-end integration test (stub server, mock LLM)
+uv run pytest -q tests/integration/test_research_analyst_example.py
+```
 
 ## Relation to the pre-consolidation version
 

@@ -2,6 +2,8 @@
 
 Interactive CLI that drives a 7-stage PPT generation pipeline on the openagents SDK.
 
+[中文文档](README.zh.md)
+
 ```bash
 uv add "io-openagent-sdk[pptx]"
 pptx-agent new --topic "your deck topic"
@@ -17,6 +19,45 @@ pptx-agent new --topic "your deck topic"
 6. **Slide generation** — each slide runs as its own agent call in parallel, with slot-schema validation, up to 2 retries, and freeform fallback.
 7. **Compile + QA** — writes the PptxGenJS JS files, runs `node compile.js`, and reads the PPTX back via `markitdown`.
 
+## Quick start (dev environment)
+
+### 1. Set up environment variables
+
+Copy the template and fill in your keys:
+
+```bash
+cp examples/pptx_generator/.env.example examples/pptx_generator/.env
+# Edit .env — at minimum set LLM_API_KEY, LLM_API_BASE, and LLM_MODEL
+```
+
+Alternatively, write to the user-level config (shared across all projects):
+
+```bash
+mkdir -p ~/.config/pptx-agent
+cp examples/pptx_generator/.env.example ~/.config/pptx-agent/.env
+```
+
+### 2. Install dependencies
+
+```bash
+uv sync
+# Requires Node 18+ (used by the PptxGenJS compile stage)
+node --version
+```
+
+### 3. Run from the repo root
+
+```bash
+# Start a new deck
+uv run python -m examples.pptx_generator.cli new --topic "How AI Agents Work"
+
+# Resume an interrupted project (slug printed by the previous command)
+uv run python -m examples.pptx_generator.cli resume <slug>
+
+# Inspect cross-session preference memory
+uv run python -m examples.pptx_generator.cli memory list
+```
+
 ## Commands
 
 ```bash
@@ -25,6 +66,61 @@ pptx-agent resume <slug>                 # resume an interrupted deck
 pptx-agent memory list [--section ...]   # list stored preferences
 pptx-agent memory forget <entry_id>      # delete one preference
 ```
+
+## Testing
+
+All tests run from the repo root and require no real API keys — every external
+service is isolated via `monkeypatch` / mock injection.
+
+### Run all pptx-related tests
+
+```bash
+# Unit tests (fast, no external services)
+uv run pytest -q tests/unit/test_pptx_cli.py \
+                 tests/unit/test_pptx_state.py \
+                 tests/unit/test_pptx_persistence.py \
+                 tests/unit/test_pptx_agent_config.py \
+                 tests/unit/test_pptx_templates.py \
+                 tests/unit/test_pptx_wizard_layout.py \
+                 tests/unit/test_pptx_wizard_editors.py \
+                 tests/unit/test_pptx_qa_scan.py \
+                 tests/unit/test_pptx_slide_runner.py
+
+# End-to-end integration test (full 7-step wizard, all services mocked)
+uv run pytest -q tests/integration/test_pptx_generator_example.py
+
+# Scaffold smoke test (openagents init + run against mock provider)
+uv run pytest -q tests/unit/cli/commands/test_init_pptx_wizard_runs.py
+```
+
+### Run a single test case
+
+```bash
+uv run pytest -q tests/integration/test_pptx_generator_example.py::test_end_to_end_all_stages_mocked
+```
+
+### How to mock the LLM and external services in tests
+
+The integration test (`test_pptx_generator_example.py`) shows the full pattern:
+
+```python
+# 1. Inject a fake runtime that dispatches by agent_id
+async def fake_runtime_run(*, agent_id, session_id, input_text, deps=None):
+    if agent_id == "intent-analyst":
+        return SimpleNamespace(parsed=IntentReport(...), state={...})
+    ...
+fake_runtime = SimpleNamespace(run=fake_runtime_run)
+
+# 2. Inject a fake shell tool (skips `node compile.js`)
+fake_shell = SimpleNamespace(invoke=AsyncMock(return_value={"exit_code": 0, ...}))
+
+# 3. Pass both into run_wizard — bypasses agent.json, no real key needed
+rc = await run_wizard(project, runtime=fake_runtime, shell_tool=fake_shell)
+```
+
+`run_wizard`'s `runtime=` and `shell_tool=` parameters are designed for test
+injection. Leave them unset in production — the function builds them from
+`agent.json` automatically.
 
 ## Replay a finished run
 

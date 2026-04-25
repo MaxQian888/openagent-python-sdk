@@ -4,6 +4,8 @@ A customer-support triage multi-agent application built on the `agent_router` se
 
 For a shorter seam-only reference see [`examples/multi_agent/`](../multi_agent/).
 
+[中文文档](README.zh.md)
+
 ## Directory
 
 ```
@@ -36,36 +38,48 @@ concierge ─┬─ delegate(isolated) ───▶ account_lookup
                                         └─ open_ticket
 ```
 
-## Run (offline mock)
+## Quick start (dev environment)
+
+### Offline mock demo (no API key)
 
 ```bash
+uv sync
 uv run python examples/multi_agent_support/run_demo_mock.py
 ```
 
-All four scenarios run in < 1 s with no API key and no network access. Scenarios:
+All four scenarios run in < 1 s with no network access.
 
-1. **Refund flow** — concierge transfers to refund_specialist, which delegates to account_lookup with `session_isolation="shared"`, then persists a refund ticket.
-2. **Tech flow** — concierge transfers to tech_support, which does one `session_isolation="forked"` diagnostic delegate (main hypothesis) and one `session_isolation="isolated"` fallback lookup before opening a tech ticket.
-3. **Depth limit** — `SelfDelegateLookupTool` invoked with a context already at `DELEGATION_DEPTH_KEY == max_delegation_depth` raises `DelegationDepthExceededError(depth=3, limit=3)` before any child is constructed.
-4. **Unknown agent** — `DelegateToMissingTool` calls `router.delegate("does_not_exist", ...)` → `AgentNotFoundError("does_not_exist")`.
-
-## Run (real LLM)
+### Real LLM demo
 
 ```bash
 cp examples/multi_agent_support/.env.example examples/multi_agent_support/.env
-# edit .env with LLM_API_KEY / LLM_API_BASE / LLM_MODEL
+# Edit .env — fill in LLM_API_KEY, LLM_API_BASE, LLM_MODEL
 uv run python examples/multi_agent_support/run_demo_real.py
 ```
 
-Runs scenarios 1 and 2 only (the depth and unknown-agent scenarios rely on direct tool invocation that a real LLM may not emit verbatim). The demo uses the `rich_console` event bus so tool / LLM / session events stream to stderr in real time.
+Runs scenarios 1 and 2 only (depth and unknown-agent scenarios rely on
+direct tool invocation that a real LLM may not emit verbatim). Uses
+the `rich_console` event bus so tool / LLM / session events stream to
+stderr in real time.
 
-## Integration tests
+## Scenarios
+
+1. **Refund flow** — concierge transfers to `refund_specialist`, which delegates to `account_lookup` with `session_isolation="shared"`, then persists a refund ticket.
+2. **Tech flow** — concierge transfers to `tech_support`, which does one `session_isolation="forked"` diagnostic delegate (main hypothesis) and one `session_isolation="isolated"` fallback lookup before opening a tech ticket.
+3. **Depth limit** — `SelfDelegateLookupTool` invoked with a context already at `DELEGATION_DEPTH_KEY == max_delegation_depth` raises `DelegationDepthExceededError(depth=3, limit=3)` before any child is constructed.
+4. **Unknown agent** — `DelegateToMissingTool` calls `router.delegate("does_not_exist", ...)` → `AgentNotFoundError("does_not_exist")`.
+
+## Testing
 
 ```bash
+# Integration tests — all four scenarios + static analysis on plugins.py (no API key)
 uv run pytest -q tests/integration/test_multi_agent_support_example.py
+
+# Unit tests — SupportDeps store behavior
+uv run pytest -q tests/unit/test_multi_agent_support_deps.py
 ```
 
-Runs all four scenarios plus a static-analysis check on `app/plugins.py` that every `session_isolation` mode appears and that router calls span ≥ 2 classes. Expected runtime: ≤ 1 s.
+Expected runtime: ≤ 1 s.
 
 ## Multi-agent config block
 
@@ -105,6 +119,14 @@ await router.transfer(
 # transfer() raises HandoffSignal; DefaultRuntime catches it and sets
 # parent.metadata["handoff_from"] = child.run_id.
 ```
+
+## Environment variables (real demo only)
+
+| Name | Required | Notes |
+|------|----------|-------|
+| `LLM_API_KEY` | yes | OpenAI-compatible key. |
+| `LLM_API_BASE` | yes | Base URL of the provider. |
+| `LLM_MODEL` | yes | Model name. |
 
 ## Further reading
 

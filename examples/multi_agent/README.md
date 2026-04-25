@@ -1,69 +1,82 @@
-# multi_agent 示例
+# multi_agent
 
-> **想看完整的、贴近真实业务的多 agent 应用？** 请看 [`examples/multi_agent_support/`](../multi_agent_support/) —— 那是 SDK 的多 agent 旗舰示例，覆盖 `agent_router` 规范的全部契约（三种 session 隔离、深度保护、AgentNotFoundError、handoff metadata、default_child_budget 兜底等），带完整的集成测试和文档。
+> **Looking for a full, production-style multi-agent app?** See [`examples/multi_agent_support/`](../multi_agent_support/) — the SDK's flagship multi-agent example, covering the full `agent_router` spec contract (all three session-isolation modes, depth protection, `AgentNotFoundError`, handoff metadata, `default_child_budget` fallback) with complete integration tests and docs.
 >
-> 本目录是 ~200 行的 **seam 级最小参考**，只演示 `delegate` / `transfer` 两个 API 的基本形状；不覆盖业务分层、deps 传递、错误路径等。第一次读多 agent 可以先看本示例感受 API，真要落 app 请看 `multi_agent_support`。
+> This directory is a **~200-line seam-level minimal reference** demonstrating only the basic shape of the `delegate` / `transfer` APIs. It does not cover business layering, deps passing, or error paths. Read this first to get a feel for the API, then look at `multi_agent_support` for a real app.
 
-演示 `agent_router` seam：两种多 agent 协作模式，分别基于 `delegate`（编排）和 `transfer`（交接）。
+[中文文档](README.zh.md)
 
-## 目录结构
+Demonstrates the `agent_router` seam: two multi-agent collaboration modes based on `delegate` (orchestration) and `transfer` (handoff).
+
+## Directory
 
 ```
 examples/multi_agent/
-├── plugins.py           # 两个自定义工具：DelegateToSpecialistTool + TransferToBillingTool
-├── agent_mock.json      # 使用 mock provider 的 4-agent 配置（无需 API key）
-├── agent_real.json      # 使用真实 LLM 的 4-agent 配置（需要 API key）
-├── run_demo_mock.py     # 离线演示
-├── run_demo_real.py     # LLM 驱动的演示
-└── .env.example         # 真实 demo 的环境变量模板
+├── plugins.py           # Two custom tools: DelegateToSpecialistTool + TransferToBillingTool
+├── agent_mock.json      # 4-agent config using mock provider (no API key required)
+├── agent_real.json      # 4-agent config using a real LLM (API key required)
+├── run_demo_mock.py     # Offline demo
+├── run_demo_real.py     # LLM-driven demo
+└── .env.example         # Credentials template for the real demo
 ```
 
-四个 agent:
-- `orchestrator` — 挂载 `delegate_to_specialist` 工具
-- `specialist` — 子 agent，接收 orchestrator 的子任务
-- `triage` — 挂载 `transfer_to_billing` 工具
-- `billing_agent` — 子 agent，接收 triage 交接的账单请求
+Four agents:
+- `orchestrator` — mounts the `delegate_to_specialist` tool
+- `specialist` — child agent, receives sub-tasks from the orchestrator
+- `triage` — mounts the `transfer_to_billing` tool
+- `billing_agent` — child agent, receives billing requests transferred from triage
 
-## 运行 mock 演示（无需 API key）
+## Quick start (dev environment)
+
+### Offline mock demo (no API key)
 
 ```bash
+uv sync
 uv run python examples/multi_agent/run_demo_mock.py
 ```
 
-展示三个场景：
-1. **Delegate**：直接调用 `router.delegate("specialist", ...)`，展示 `RunResult` 返回与 `_run_depths` 记录
-2. **Transfer**：直接调用 `router.transfer("billing_agent", ...)` 并捕获 `HandoffSignal`
-3. **Tool-driven**：`runtime.run()` + `/tool delegate_to_specialist ...`，走完整 ReAct → tool → router 路径
+Three scenarios are demonstrated:
+1. **Delegate** — calls `router.delegate("specialist", ...)` directly, showing `RunResult` return and `_run_depths` tracking.
+2. **Transfer** — calls `router.transfer("billing_agent", ...)` directly and catches `HandoffSignal`.
+3. **Tool-driven** — `runtime.run()` with `/tool delegate_to_specialist ...`, exercising the full ReAct → tool → router path.
 
-## 运行真实 LLM 演示
+### Real LLM demo
 
 ```bash
 cp examples/multi_agent/.env.example examples/multi_agent/.env
-# 编辑 .env 填入 LLM_API_KEY / LLM_API_BASE / LLM_MODEL
+# Edit .env — fill in LLM_API_KEY, LLM_API_BASE, LLM_MODEL
 uv run python examples/multi_agent/run_demo_real.py
 ```
 
-两个场景：
-- `orchestrator` 收到事实查询问题，LLM 选择调用 `delegate_to_specialist`，综合返回最终答案
-- `triage` 收到退款请求，LLM 调用 `transfer_to_billing` 将控制权永久交给 billing_agent，父 run 以 billing 的输出结束
+Two scenarios:
+- `orchestrator` receives a factual query; the LLM calls `delegate_to_specialist` and synthesises the final answer.
+- `triage` receives a refund request; the LLM calls `transfer_to_billing`, permanently handing control to `billing_agent`.
 
-## 关键 API
+## Testing
+
+```bash
+uv run pytest -q tests/integration/test_multi_agent.py
+```
+
+Uses the mock provider — no API key required.
+
+## Key API
 
 ```python
-# 在自定义工具 / pattern 中：
-router = ctx.agent_router  # 由 DefaultRuntime 注入（仅在 multi_agent.enabled=true 时存在）
+# Inside a custom tool or pattern:
+router = ctx.agent_router  # injected by DefaultRuntime when multi_agent.enabled=true
 
-# Orchestrator（等待子结果）
+# Orchestrator (await child result, then continue)
 result = await router.delegate(
     "specialist", task, ctx,
     session_isolation="isolated",  # "shared" | "isolated" | "forked"
 )
 
-# Handoff（永久交接）
-await router.transfer("billing_agent", task, ctx)  # 抛出 HandoffSignal
+# Handoff (permanent hand-over)
+await router.transfer("billing_agent", task, ctx)  # raises HandoffSignal
 ```
 
-## 启用配置
+## Config block
 
 ```json
 {
@@ -75,9 +88,17 @@ await router.transfer("billing_agent", task, ctx)  # 抛出 HandoffSignal
 }
 ```
 
-- `max_delegation_depth` 控制嵌套层数，超过抛 `DelegationDepthExceededError`；深度通过 `RunRequest.metadata["__openagents_delegation_depth__"]` 传递，不使用进程级状态
-- `default_child_budget` 为子 run 兜底：调用 `delegate(budget=None)` 时自动使用该预算
-- `session_isolation`：
-  - `shared` — 子 run 复用父 `session_id`（通过 asyncio-task 可重入锁避免死锁）
-  - `isolated` — 全新 session（默认）
-  - `forked` — `SessionManagerPlugin.fork_session(parent, child)` 复制父 session 的消息/artifacts 快照到新 `{parent}:fork:{run_id}`；之后父/子独立写
+- `max_delegation_depth` — caps nested delegation; exceeding it raises `DelegationDepthExceededError`. Depth is tracked via `RunRequest.metadata["__openagents_delegation_depth__"]`, not process-level state.
+- `default_child_budget` — applied automatically when `delegate(budget=None)` is called.
+- `session_isolation` modes:
+  - `shared` — child run reuses the parent `session_id` (asyncio-task reentrant lock prevents deadlocks).
+  - `isolated` — fresh session (default).
+  - `forked` — `SessionManagerPlugin.fork_session()` copies the parent's messages/artifacts snapshot to a new `{parent}:fork:{run_id}`; parent and child then write independently.
+
+## Environment variables (real demo only)
+
+| Name | Required | Notes |
+|------|----------|-------|
+| `LLM_API_KEY` | yes | OpenAI-compatible key. |
+| `LLM_API_BASE` | yes | Base URL of the provider. |
+| `LLM_MODEL` | yes | Model name. |

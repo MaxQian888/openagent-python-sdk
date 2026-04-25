@@ -3,6 +3,14 @@ site_description: Config-as-code single-agent runtime kernel for Python
 repo_url: https://github.com/openagentsinc/openagent-python-sdk
 repo_name: openagent-python-sdk
 docs_dir: docs
+
+exclude_docs: |
+  plans/
+  research/
+  superpowers/
+  README.md
+  requirements.txt
+
 theme:
   name: material
   language: zh
@@ -84,23 +92,30 @@ extra:
 nav:
   - 首页: index.md
   - 入门:
-      - 开发者指南: developer-guide.md
-      - 仓库结构: repository-layout.md
-      - 示例: examples.md
+      - 开发者指南: getting-started/developer-guide.md
+      - 仓库结构: getting-started/repository-layout.md
+      - 示例: getting-started/examples.md
   - 架构:
-      - Seam 与扩展点: seams-and-extension-points.md
+      - Seam 与扩展点: architecture/seams-and-extension-points.md
   - 配置:
-      - 配置参考: configuration.md
-      - 事件分类: event-taxonomy.md
+      - 配置参考: configuration/configuration.md
+      - 事件分类: configuration/event-taxonomy.md
   - 插件开发:
-      - 插件开发指南: plugin-development.md
+      - 插件开发指南: plugins/plugin-development.md
   - API 参考:
-      - API 参考: api-reference.md
-      - 内置工具参考: builtin-tools.md
-      - 流式 API: stream-api.md
-      - CLI 参考: cli-reference.md
-      - 可观测性与日志: observability.md
-  - 迁移:
-      - 0.2 → 0.3: migration-0.2-to-0.3.md
+      - API 参考: reference/api-reference.md
+      - 内置工具: reference/builtin-tools.md
+      - 流式 API: reference/stream-api.md
+      - 错误参考: reference/errors.md
+      - 可观测性与日志: reference/observability.md
+  - CLI:
+      - 内置 CLI: cli/cli.md
+      - CLI 命令参考: cli/cli-reference.md
+  - 示例详解:
+      - Multi-Agent Support: guides/multi-agent-support-example.md
+      - PPTX Agent CLI: guides/pptx-agent-cli.md
   - Skills:
-      - OpenAgent Agent Builder: openagent-agent-builder.md
+      - OpenAgent Agent Builder: skills/openagent-agent-builder.md
+  - 迁移:
+      - 0.2 → 0.3: migration/migration-0.2-to-0.3.md
+      - 0.3 → 0.4: migration/migration-0.3-to-0.4.md

@@ -88,7 +88,7 @@ The OpenAgents SDK is built around a three-layer design that keeps the kernel st
 
     Environment setup, test commands, complete development workflow
 
-    [:octicons-arrow-right-24: developer-guide.md](developer-guide.md)
+    [:octicons-arrow-right-24: developer-guide.md](getting-started/developer-guide.md)
 
 - **Seams & Extension Points**
 
@@ -96,7 +96,7 @@ The OpenAgents SDK is built around a three-layer design that keeps the kernel st
 
     Seam responsibilities, decision tree, how to choose the right extension point
 
-    [:octicons-arrow-right-24: seams-and-extension-points.md](seams-and-extension-points.md)
+    [:octicons-arrow-right-24: seams-and-extension-points.md](architecture/seams-and-extension-points.md)
 
 - **Configuration Reference**
 
@@ -104,7 +104,7 @@ The OpenAgents SDK is built around a three-layer design that keeps the kernel st
 
     Full schema for `agent.json`, documentation for every field
 
-    [:octicons-arrow-right-24: configuration.md](configuration.md)
+    [:octicons-arrow-right-24: configuration.md](configuration/configuration.md)
 
 - **Plugin Development**
 
@@ -112,7 +112,7 @@ The OpenAgents SDK is built around a three-layer design that keeps the kernel st
 
     How to write custom plugins, register them to seams, test and publish them
 
-    [:octicons-arrow-right-24: plugin-development.md](plugin-development.md)
+    [:octicons-arrow-right-24: plugin-development.md](plugins/plugin-development.md)
 
 - **API Reference**
 
@@ -120,7 +120,7 @@ The OpenAgents SDK is built around a three-layer design that keeps the kernel st
 
     Complete API for `Runtime`, `RunRequest`, `RunResult`, `RunContext`, and other core types
 
-    [:octicons-arrow-right-24: api-reference.md](api-reference.md)
+    [:octicons-arrow-right-24: api-reference.md](reference/api-reference.md)
 
 - **CLI Reference**
 
@@ -128,7 +128,7 @@ The OpenAgents SDK is built around a three-layer design that keeps the kernel st
 
     Full documentation for `openagents schema`, `openagents validate`, `openagents list-plugins`
 
-    [:octicons-arrow-right-24: cli-reference.md](cli-reference.md)
+    [:octicons-arrow-right-24: cli-reference.md](cli/cli-reference.md)
 
 - **Examples**
 
@@ -136,7 +136,7 @@ The OpenAgents SDK is built around a three-layer design that keeps the kernel st
 
     How to run the quickstart and production_coding_agent examples
 
-    [:octicons-arrow-right-24: examples.md](examples.md)
+    [:octicons-arrow-right-24: examples.md](getting-started/examples.md)
 
 - **Migration Guide**
 
@@ -144,7 +144,7 @@ The OpenAgents SDK is built around a three-layer design that keeps the kernel st
 
     Changes and migration steps when upgrading from 0.2.x to 0.3.x
 
-    [:octicons-arrow-right-24: migration-0.2-to-0.3.md](migration-0.2-to-0.3.md)
+    [:octicons-arrow-right-24: migration-0.2-to-0.3.md](migration/migration-0.2-to-0.3.md)
 
 </div>
 
@@ -164,4 +164,4 @@ The OpenAgents SDK is built around a three-layer design that keeps the kernel st
 | Product task envelopes, permission models, planning state | **Not a seam** — put it in `RunContext.state` |
 
 !!! note "Full decision tree"
-    See [seams-and-extension-points.md](seams-and-extension-points.md) for the complete decision tree and per-seam lifecycle documentation.
+    See [seams-and-extension-points.md](architecture/seams-and-extension-points.md) for the complete decision tree and per-seam lifecycle documentation.

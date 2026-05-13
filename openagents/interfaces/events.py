@@ -2,22 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from .plugin import BasePlugin
 
 EventHandler = Callable[["RuntimeEvent"], Awaitable[None] | None]
 
 
-@dataclass
-class RuntimeEvent:
+class RuntimeEvent(BaseModel):
     """Runtime event data."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     name: str
-    payload: dict[str, Any] = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    payload: dict[str, Any] = Field(default_factory=dict)
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class EventBusPlugin(BasePlugin):
@@ -83,11 +85,6 @@ class EventBusPlugin(BasePlugin):
         pass
 
 
-# Capability constants
-EVENT_SUBSCRIBE = "event.subscribe"
-EVENT_EMIT = "event.emit"
-EVENT_HISTORY = "event.history"
-
 # Runtime lifecycle event names
 RUN_REQUESTED = "run.requested"
 RUN_VALIDATED = "run.validated"
@@ -97,6 +94,10 @@ MEMORY_INJECTED = "memory.injected"
 MEMORY_INJECT_FAILED = "memory.inject_failed"
 MEMORY_WRITEBACK_SUCCEEDED = "memory.writeback_succeeded"
 MEMORY_WRITEBACK_FAILED = "memory.writeback_failed"
+MEMORY_COMPACT_SUCCEEDED = "memory.compact_succeeded"
+MEMORY_COMPACT_FAILED = "memory.compact_failed"
+CONTEXT_COMPACT_SUCCEEDED = "context.compact_succeeded"
+CONTEXT_COMPACT_FAILED = "context.compact_failed"
 RUN_COMPLETED = "run.completed"
 RUN_FAILED = "run.failed"
 

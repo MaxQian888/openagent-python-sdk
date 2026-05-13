@@ -27,6 +27,7 @@ htmlcov/
 
 # Environment & secrets
 *.env
+OpenCLI/
 
 # Tooling
 .ace-tool/
@@ -46,3 +47,5 @@ examples/pptx_generator/outputs/*
 examples/pptx_generator/skills/pptx-generator/nova-code-2-launch/
 examples/pptx_generator/skills/pptx-generator/smoke-test/
 *.bak
+examples/llm_wiki_agent/knowledge/
+examples/llm_wiki_agent/sessions/

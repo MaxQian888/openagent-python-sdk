@@ -10,11 +10,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from openagents.interfaces.capabilities import (
-    MEMORY_INJECT,
-    MEMORY_RETRIEVE,
-    MEMORY_WRITEBACK,
-)
 from openagents.interfaces.memory import MemoryPlugin
 from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
@@ -57,7 +52,6 @@ class MarkdownMemory(TypedConfigPluginMixin, MemoryPlugin):
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(
             config=config or {},
-            capabilities={MEMORY_INJECT, MEMORY_WRITEBACK, MEMORY_RETRIEVE},
         )
         self._init_typed_config()
         self._dir = Path(self.cfg.memory_dir).expanduser()
@@ -111,6 +105,9 @@ class MarkdownMemory(TypedConfigPluginMixin, MemoryPlugin):
     async def inject(self, context: Any) -> None:
         for section in self.cfg.sections:
             context.memory_view[section] = self._parse(section, max_chars=self.cfg.max_chars_per_section)
+
+    async def compact(self, context: Any) -> None:
+        """No-op: MarkdownMemory manages size via _parse max_chars budget."""
 
     async def writeback(self, context: Any) -> None:
         pending = context.state.get("_pending_memory_writes") or []

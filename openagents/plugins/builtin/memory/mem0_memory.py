@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK
 from openagents.interfaces.memory import MemoryPlugin
 
 logger = logging.getLogger(__name__)
@@ -33,7 +32,6 @@ class Mem0Memory(MemoryPlugin):
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(
             config=config or {},
-            capabilities={MEMORY_INJECT, MEMORY_WRITEBACK},
         )
         self._collection_name = self.config.get("collection_name", "openagents_memory")
         self._search_limit = self.config.get("search_limit", 5)
@@ -89,6 +87,9 @@ class Mem0Memory(MemoryPlugin):
             # On any error, fallback to empty
             context.memory_view["mem0_history"] = []
             context.memory_view["history"] = []
+
+    async def compact(self, context: Any) -> None:
+        """No-op: Mem0 handles compaction internally."""
 
     async def writeback(self, context: Any) -> None:
         """Store current interaction in Mem0."""

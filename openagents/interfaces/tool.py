@@ -206,6 +206,12 @@ class ToolExecutorPlugin(BasePlugin):
 class ToolPlugin(BasePlugin):
     """Base tool plugin."""
 
+    def __init__(
+        self,
+        config: dict[str, Any] | None = None,
+    ):
+        super().__init__(config=config or {})
+
     # Subclasses can override these
     name: str = ""
     description: str = ""

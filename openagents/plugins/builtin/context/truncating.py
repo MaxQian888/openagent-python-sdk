@@ -34,11 +34,20 @@ class TruncatingContextAssembler(ContextAssemblerPlugin):
         include_summary_message: bool = True
 
     def __init__(self, config: dict[str, Any] | None = None):
-        super().__init__(config=config or {}, capabilities=set())
+        super().__init__(config=config or {})
         cfg = self.Config.model_validate(self.config)
         self._max_messages = cfg.max_messages
         self._max_artifacts = cfg.max_artifacts
         self._include_summary_message = cfg.include_summary_message
+
+    async def compact(
+        self,
+        *,
+        request: Any,
+        session_state: dict[str, Any],
+        session_manager: Any,
+    ) -> None:
+        """No-op: TruncatingContextAssembler trims during assemble()."""
 
     async def assemble(
         self,

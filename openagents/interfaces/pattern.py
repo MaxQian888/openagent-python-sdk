@@ -55,6 +55,12 @@ class PatternPlugin(BasePlugin):
 
     context: RunContext[Any] | None = None
 
+    def __init__(
+        self,
+        config: dict[str, Any] | None = None,
+    ):
+        super().__init__(config=config or {})
+
     async def setup(
         self,
         agent_id: str,

@@ -6,7 +6,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from openagents.interfaces.capabilities import MEMORY_INJECT, MEMORY_WRITEBACK
 from openagents.interfaces.memory import MemoryPlugin
 from openagents.interfaces.typed_config import TypedConfigPluginMixin
 
@@ -40,7 +39,6 @@ class BufferMemory(TypedConfigPluginMixin, MemoryPlugin):
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(
             config=config or {},
-            capabilities={MEMORY_INJECT, MEMORY_WRITEBACK},
         )
         self._init_typed_config()
 
@@ -77,6 +75,9 @@ class BufferMemory(TypedConfigPluginMixin, MemoryPlugin):
     async def inject(self, context: Any) -> None:
         buffer = self._get_buffer(context)
         context.memory_view[self._view_key()] = self._slice_for_view(buffer)
+
+    async def compact(self, context: Any) -> None:
+        """No-op: BufferMemory already trims in _trim_in_place during writeback."""
 
     async def writeback(self, context: Any) -> None:
         buffer = self._get_buffer(context)
